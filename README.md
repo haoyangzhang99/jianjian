@@ -1,0 +1,230 @@
+# jianjian 剪剪
+
+**Turn a podcast or video-call recording into an edited Jianying Pro (剪映专业版) project, locally
+and for free.** Long pauses and filler words are trimmed, synchronized Chinese + English subtitles
+are added, and you get both an editable Jianying draft and a finished MP4.
+
+- **Pause trimming** with presets for Shorts, YouTube, conversations, podcasts and interviews
+- **Filler-word removal** (optional): uh / um and stutters automatically; "like / you know" after review
+- **Bilingual subtitles**, transcribed and translated on your Mac (Whisper + Qwen2.5 via MLX)
+- **A new, editable Jianying draft** that references your original file, plus an **MP4** with
+  burned-in subtitles, rendered by FFmpeg
+- **Optional speed-up** (e.g. 1.05×) with the voice pitch kept
+- **Built for coding agents** (Claude Code, Codex): a skill maps plain-language requests to the tool
+
+No paid software, no API keys, and no media leaves the Mac. The network is used only once, to
+download open-source packages and models.
+
+> jianjian is an independent project. It is not affiliated with or endorsed by ByteDance, the
+> maker of Jianying / CapCut. Jianying's draft format is undocumented; a Jianying update can break
+> draft generation. Tested with Jianying Pro 11.5 on macOS.
+
+## Requirements
+
+- An Apple Silicon Mac (MLX translation needs it)
+- An arm64 Python 3.10–3.13, or [`uv`](https://github.com/astral-sh/uv)
+- About 12 GB of free disk for packages and models
+- Jianying Pro for the draft (optional: the MP4 doesn't need it)
+
+## Install
+
+```bash
+git clone https://github.com/haoyangzhang99/jianjian.git
+cd jianjian
+bash setup.sh
+```
+
+Setup:
+
+- Creates `./.venv` with faster-whisper, mlx-lm, opencc, jieba and imageio-ffmpeg. Nothing is
+  installed system-wide.
+- Downloads the Whisper large-v3-turbo model (about 1.6 GB) into `~/.cache/huggingface`.
+- Downloads a translation model into the same cache, sized to your RAM:
+  - 16 GB or more: Qwen2.5-7B-Instruct, 4-bit, about 4.3 GB
+  - less than 16 GB: Qwen2.5-1.5B-Instruct, 4-bit, about 0.9 GB (lower translation quality)
+- Links the `jianjian` command into `~/.local/bin`.
+- Links `skill/` into `~/.agents/skills`, `~/.codex/skills` and `~/.claude/skills`, for whichever
+  of those already exist, so coding agents can use it from plain language.
+
+No macOS permissions are needed. jianjian reads and writes files only: your video folder, a new
+`<name>_edit/` output folder, and Jianying's drafts folder
+(`~/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/`), where it only ever adds new drafts.
+
+## Quick start
+
+```bash
+jianjian presets                                   # pick a pause preset (there is no default)
+jianjian edit ~/Videos/episode.mp4 --preset conversation
+jianjian edit ~/Videos/episode.mp4 --preset conversation --cut-fillers --speed 1.05
+jianjian doctor                                    # check the environment
+```
+
+Or ask your coding agent in plain language:
+
+> Edit ~/Videos/episode.mp4 for Jianying: trim the pauses, cut filler words, add Chinese and English
+> subtitles, and export it.
+
+The agent asks which pause preset to use before it starts (see `skill/SKILL.md`).
+
+Output goes to `<video folder>/<name>_edit/`:
+
+| File | What |
+|---|---|
+| `report.md` / `report.json` | What was done, plus the validation and sync checks |
+| `<name>_edited.mp4` | Finished video with burned-in subtitles |
+| `<name>.zh.srt`, `.en.srt`, `.bilingual.srt`, `.bilingual.ass` | Subtitles on the edited timeline |
+| `<name>.original-timeline.srt` | Subtitles on the original, uncut timeline |
+| `cues.json` | Every subtitle line with its translation; edit it and rerun with `--cues` |
+| `fillers.json`, `fillers_review.md` | Filler-word candidates and decisions (with `--cut-fillers`) |
+| `cuts.json` | The exact keep ranges and removed pauses / fillers |
+| `jianying_draft/` | A copy of the generated draft; the live one is inside Jianying |
+
+In Jianying, the draft appears under 首页 → 本地草稿. If Jianying was already open, go back to the
+home page, or restart Jianying if it still doesn't show.
+
+## Pause presets
+
+| Preset | Pauses longer than | become | Best for |
+|---|---|---|---|
+| `shorts` | 0.5 s | 0.25 s | Shorts / Reels / TikTok, one speaker, fastest pace |
+| `youtube` | 0.6 s | 0.3 s | YouTube talking head, one speaker |
+| `conversation` | 0.6 s | 0.35 s | YouTube conversation, 2+ speakers (keeps turn-taking natural) |
+| `podcast` | 0.75 s | 0.4 s | Podcast / long-form listening, relaxed pace |
+| `interview` | 1.0 s | 0.6 s | Slow, reflective interview; keeps thinking pauses |
+
+Pauses at or below the threshold are left as they are; longer ones are shortened to the kept
+length. The values follow common silence-removal tools: Mubert Cast's default is pauses over 0.5 s
+shortened to 0.3 s, FireCut suggests 750 ms with 250 + 250 ms padding, AutoCut calls 0.3–0.5 s
+ideal for YouTube, auto-editor keeps 0.2 s each side, and Chinese 口播 guidance keeps 0.2–0.8 s
+(0.8–1.2 s for interviews).
+
+## Settings
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--preset NAME` | **required** | Pause handling; see the presets above. There is no default because the right pace depends on the video. |
+| `--max-pause S --keep-pause S` | | Exact pause thresholds instead of a preset |
+| `--no-cut` | | Keep the full length (subtitles only) |
+| `--cut-fillers` | | Also cut uh/um and stutter repeats. like / so / you know are listed in `fillers_review.md` for review, not cut. |
+| `--fillers FILE` | | Apply a reviewed `fillers.json` (`"cut": true/false` per candidate; restarts can be added by word range) |
+| `--speed 1.05` | 1.0 | Play the whole edit faster, voice pitch kept. 1.05× is barely noticeable, 1.1× feels brisk, and above about 1.15× speech sounds rushed. |
+| `--lang auto\|zh\|en` | auto | `auto` detects the language per segment, which suits mixed Chinese/English speakers |
+| `--subs bi\|zh\|en\|none` | bi | Which subtitle languages to create |
+| `--glossary FILE` | | Term list for the translator, as `源词 = target` lines or JSON |
+| `--cues FILE` | | Use a reviewed `cues.json` (fixed text and translations) |
+| `--translations FILE` | | Import fixed or better translations (`{"id": "text"}`) |
+| `--cards FILE` | | Explainer cards: `[{"at": src_seconds, "duration": 6, "title": "", "text": ""}]` |
+| `--no-draft` / `--no-render` / `--no-install` | | Skip the Jianying draft, skip the MP4, or build the draft without adding it to Jianying |
+| `--no-burn` / `--soft-subs` | | Don't burn in subtitles / also add selectable subtitle tracks |
+| `--fps 30` | 30 | Timeline frame rate; every cut is snapped to this frame grid |
+
+Re-runs are fast: the VAD and transcripts are cached in `work/`, so changing pause settings,
+subtitles, fillers or cards doesn't re-transcribe. Use `--redo-asr` to force a fresh transcript.
+
+## Review before publishing
+
+Automatic subtitles are well timed but not publish-ready: expect wrong proper names (titles,
+people, brands), a few mishearings and roughly one mistranslated line in ten. The workflow, which
+an agent can do for you (see `skill/SKILL.md`):
+
+1. Review `cues.json`: fix `text` and `translation` in a copy, rerun with `--cues reviewed.json`.
+2. With `--cut-fillers`: review `fillers_review.md`, set `"cut"` in `fillers.json`, rerun with
+   `--fillers fillers.json`. Optionally run `.venv/bin/python tools/verify_words.py <out>` to confirm
+   no real words were cut.
+3. Watch the result and listen to the cuts.
+
+## How it works
+
+```
+video ─► 16 kHz audio ─► Silero VAD ─┐
+                    └─► faster-whisper (word timestamps) ─┤ (+ verbatim pass for filler words)
+                                                          ├─► keep ranges, snapped to 1/fps
+                                                          │      │
+             subtitle cues ◄─ word grouping ◄─────────────┘      ├─► Jianying draft (pyJianYingDraft)
+                │                                                │      main track = keep ranges of the ORIGINAL file
+          MLX translation (Qwen2.5)                              │      text track = bilingual cues on the edit
+                │                                                └─► FFmpeg render (same keep ranges)
+                └──────────────── remapped onto edited timeline ─────────► SRT / ASS / burned-in MP4
+```
+
+- **Sync.** The Jianying timeline, the render and the subtitles all use the same frame-snapped keep
+  ranges, so the edit can't drift over hundreds of cuts. Each render is checked automatically by
+  cross-correlating its audio with the expected audio.
+- **Fillers** come from a second, verbatim Whisper pass and are re-located on the waveform, because
+  Whisper's timestamps for "uh" are often 0.1–0.5 s off. Cuts never reach into neighbouring words
+  and get a short audio fade.
+- **Translation** works one whole sentence at a time, then splits each translation back over that
+  sentence's subtitle lines at word boundaries.
+- **Drafts.** Jianying 6+ encrypts drafts it saves, so jianjian never reads or edits an existing
+  draft; it writes a new one.
+
+[docs/DECISIONS.md](docs/DECISIONS.md) explains each design choice and the test result behind it.
+
+## Capability report
+
+Tested on an Apple Silicon Mac (48 GB RAM, Jianying Pro 11.5) with a 15-minute, two-speaker English
+conversation recorded on a video call. A full run (transcribe, translate, draft, render) took about
+4.5 minutes; expect roughly 15–20 minutes for a 60-minute episode.
+
+**Fully automated and tested**
+
+| Feature | Result on the test recording |
+|---|---|
+| Pause trimming | `conversation` preset: 15:00 → 12:20 together with filler cuts. Cuts snapped to the 1/30 s grid, never inside a word. |
+| Filler words | 234 candidates; 117 uh/um and 28 stutter repeats cut automatically. Re-transcribing the edit: 0 real words cut, 13 of 118 uh/um still audible (mostly glued to a word). |
+| Transcription | faster-whisper large-v3-turbo on the CPU, about 10× realtime, punctuated throughout |
+| Bilingual subtitles | 258 lines; one text box per line in Jianying (no overlap when lines wrap); burned into the MP4 |
+| Translation | Qwen2.5-7B via MLX, en → zh, about 0.4 s per sentence, 0 failed lines |
+| Jianying draft | New draft in 本地草稿: 1 video track referencing the original file, 1 bilingual text track; opens in Jianying 11.5 |
+| MP4 export | 1080p, 30 fps, VideoToolbox; duration exact, A/V sync within 10 ms at every probe (also at 1.05×) |
+| Speed-up | 1.05×: subtitle starts vs spoken words median −3 ms, no drift |
+| Validation | `report.md` lists each check; the command exits with code 2 if one fails |
+
+**Partially automated**
+
+- **Subtitle quality** needs the review pass above. On the test recording the review fixed 15
+  transcript lines (names, a few mishearings) and about 30 real translation errors.
+- **Contextual fillers** (like / so / you know / restarts) are listed for review: 36 of 84 were cut.
+  The review also kept "repeats" that were really two speakers echoing each other.
+- **Explainer cards** (`--cards`) are built but not yet tested on a real episode.
+- **Chinese and mixed zh/en audio:** the code paths exist but are not yet tested on real audio.
+
+**Manual**
+
+- Exporting from inside Jianying (导出); jianjian's MP4 is the automated export.
+- Edits made in Jianying after opening the draft. To change something automated, rerun jianjian;
+  it creates a new draft.
+- Listening to the cuts before publishing.
+
+**Unsupported**
+
+- Reading or re-editing drafts Jianying has saved (they are encrypted).
+- Automated export through Jianying on macOS.
+- Speaker labels (diarization).
+- Jianying templates, stickers or effects; the draft holds video and text tracks only.
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `jianjian is not set up yet` | `bash setup.sh` |
+| `jianjian: command not found` | Add `~/.local/bin` to your PATH, or run `bin/jianjian` from the repo |
+| Draft doesn't appear in Jianying | Go back to the Jianying home page or restart Jianying, then check `report.md` → "Installed at" |
+| Clips show as missing/offline in Jianying | The source video was moved or renamed. Put it back, or rerun jianjian. |
+| Model download fails or is slow | Setup is resumable, so re-run it. In mainland China, `export HF_ENDPOINT=https://hf-mirror.com` first. |
+| Subtitles too long | `--max-chars 16` for shorter lines |
+| Cuts feel too aggressive | A gentler preset (`podcast`, `interview`), or raise `--keep-pause` |
+| Wrong language on a section | `--lang zh` for an all-Chinese show, or fix the lines in `cues.json` and rerun with `--cues` |
+| No burned-in subtitles in the MP4 | No ffmpeg with libass was found. jianjian prefers an ffmpeg with libass and falls back to the one bundled with imageio-ffmpeg; Homebrew's ffmpeg 8+ has none. Re-run `setup.sh`, or set `JIANJIAN_FFMPEG` to an ffmpeg with libass. |
+| `ERROR: need an arm64 Python` | `brew install python@3.12`, or install `uv` |
+
+## Contributing
+
+Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Run the unit tests
+with `.venv/bin/python -m pytest` (they need no models).
+
+## License
+
+jianjian is released under the [MIT License](LICENSE). It bundles pyJianYingDraft (Apache-2.0) and
+downloads third-party models and packages under their own licenses; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

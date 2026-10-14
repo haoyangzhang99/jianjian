@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Launcher: runs the pipeline inside its private Python environment.
+SRC="$0"; while [[ -L "$SRC" ]]; do SRC="$(readlink "$SRC")"; done
+HERE="$(cd "$(dirname "$SRC")/.." && pwd)"
+if [[ ! -x "$HERE/.venv/bin/python" ]]; then
+  echo "jianjian is not set up yet. Run:  bash \"$HERE/setup.sh\"" >&2; exit 1
+fi
+export PYTHONPATH="$HERE${PYTHONPATH:+:$PYTHONPATH}"
+exec "$HERE/.venv/bin/python" -m jianjian "$@"

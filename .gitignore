@@ -1,0 +1,24 @@
+# local environment (rebuilt by setup.sh)
+.venv/
+__pycache__/
+*.pyc
+
+# run logs and scratch outputs
+logs/
+test_output/
+*_edit/
+
+# media: never commit videos, audio or renders
+*.mp4
+*.mov
+*.m4a
+*.wav
+*.mp3
+*.jpg
+*.png
+
+.DS_Store
+
+# local notes (personal / per-machine; never commit)
+STATUS.md
+*.local.md

@@ -1,0 +1,8 @@
+faster-whisper==1.2.1
+av<17  # faster-whisper 1.2.1 passes metadata_errors=, removed in PyAV 19
+mlx-lm>=0.21
+opencc-python-reimplemented==0.1.7
+imageio-ffmpeg>=0.5
+numpy
+huggingface_hub
+jieba==0.42.1
