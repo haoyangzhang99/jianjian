@@ -49,6 +49,19 @@ were tried and failed.
   guidance keeps 0.2–0.8 s (0.8–1.2 s for interviews). There is **no default preset**: the right
   pace depends on the video, so the tool requires `--preset` and agents ask the user first.
 
+## Short-video openings (Douyin / Xiaohongshu / Shorts)
+
+- **The first 30 seconds follow a 3 / 15 / 30 plan:** a hook in the first 3 s (counter-intuitive
+  claim, suspense, or credentials + result), real value by 15 s, and the video's structure stated
+  by 30 s. It comes from creator advice on short-video feeds, which rank on completion, engagement
+  and share rate, so the opening decides retention. Agents suggest it for these platforms and
+  build the deliverable to it (skill/SKILL.md §0b).
+- **Done with content cuts, not a new feature.** Preamble and warm-up are removed as reviewed
+  `restart` spans in `fillers.json`, which already cut cleanly and keep subtitles in sync.
+  jianjian never reorders clips (keep ranges are in source order), so a hook that sits later in
+  the recording has to be moved in Jianying or re-recorded. The agent says so instead of claiming
+  the structure is met.
+
 ## Filler words (`--cut-fillers`)
 
 - **A second, verbatim transcript.** Whisper drops "uh/um" when it punctuates. A prompt written

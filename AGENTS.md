@@ -5,6 +5,8 @@ This folder is a local podcast-editing pipeline for Jianying Pro. The full usage
 
 - Before editing a new video, ask the user which pause preset to use (`bin/jianjian presets`;
   skill/SKILL.md §0). There is no default, and the tool refuses to run without one.
+- For Douyin / Xiaohongshu / Shorts, suggest the 3 / 15 / 30 s opening plan (hook, value,
+  structure) and build the deliverable to it (skill/SKILL.md §0b).
 - Run jobs with `bin/jianjian edit "<video>" --preset NAME [flags]`; check `<video>_edit/report.md` afterwards.
 - `bin/jianjian doctor` checks the environment; `bash setup.sh` installs/repairs it.
 - Don't touch the source video or existing Jianying drafts; jianjian only adds new drafts.

@@ -1,6 +1,6 @@
 ---
 name: jianjian
-description: Edit a podcast/meeting video for Jianying Pro (剪映专业版) on this Mac — remove long pauses, add synchronized Chinese+English subtitles, optional explainer cards, create an editable Jianying draft and export an MP4. Use when the user asks to edit/cut/subtitle a podcast or episode, "剪播客", "去掉停顿", "加双语字幕", or to make a Jianying project from a recording.
+description: Edit a podcast/meeting video for Jianying Pro (剪映专业版) on this Mac — remove long pauses, add synchronized Chinese+English subtitles, optional explainer cards, create an editable Jianying draft and export an MP4. Use when the user asks to edit/cut/subtitle a podcast or episode, "剪播客", "去掉停顿", "加双语字幕", or to make a Jianying project from a recording, including short videos for Douyin (抖音), Xiaohongshu (小红书) or Shorts.
 ---
 
 # Podcast → Jianying pipeline (jianjian)
@@ -28,11 +28,42 @@ already chosen.
 If unsure, suggest one: `conversation` for a two-person YouTube show, `podcast` for audio-first.
 `jianjian presets` prints the list. Exact values: `--max-pause S --keep-pause S`.
 
+## 0b. Short-video platforms: plan the first 30 seconds
+
+If the video is for Douyin (抖音), Xiaohongshu (小红书), Kuaishou, WeChat Channels (视频号), Shorts,
+Reels or TikTok, suggest this opening structure along with the preset question, and build the
+deliverable to it. If the platform isn't clear and the video is short or vertical, ask. These feeds
+rank on completion, engagement and share rate, and the opening decides whether people stay.
+
+| By | Goal | How |
+|---|---|---|
+| 0–3 s | **Hook** | One of three: a counter-intuitive claim (反常识); suspense: a striking result without the how (设置悬念); credentials + result, then empathy with the viewer's problem (身份 + 成绩) |
+| 15 s | **Deliver value** | The first concrete tip or core insight, so staying feels worth it (值回票价) |
+| 30 s | **Show the structure** | Say what the video covers and what the viewer gets, e.g. "今天分享三点：第一…第二…第三…" |
+
+1. Run the edit once with `--cut-fillers` (the transcript is cached for reruns). Read
+   `<out>/<name>.original-timeline.srt`.
+2. Show the user an opening plan: the line that will open the video and its hook type, the value
+   line, the roadmap line (source timestamps for each), and what gets cut to bring them forward:
+   greetings, "大家好我是…", setup chatter, warm-up before the point. Content cuts are judgment
+   calls, so wait for the user's OK.
+3. Apply it: in `<out>/fillers.json`, add `{"words": [i, j], "kind": "restart", "cut": true}` for
+   each span to remove (indices into `work/transcript_verbatim.json`), then rerun with
+   `--fillers <out>/fillers.json`. If the user didn't ask for filler cuts, set the automatic
+   candidates to `"cut": false`.
+4. Check the edited timeline (`<out>/<name>.zh.srt` or `.bilingual.srt`, already speed-adjusted):
+   hook within the first second, value by 15 s, roadmap by 30 s. Put these three times in your report.
+5. jianjian cuts but never reorders clips. If the best hook comes later than the value or roadmap,
+   or the recording has no usable hook, say so and offer: move that clip to the front in Jianying
+   after the draft is built, record a 3-second hook line to add in Jianying, or (weaker) a card at
+   0 s with the hook as text (`--cards`, see §4). Never claim the structure is met when it isn't.
+
 ## 1. Map the request to flags
 
 | User says | Flags |
 |---|---|
 | pause pace | `--preset NAME`: **always ask first**; see "Before every new video" below |
+| for Douyin / 小红书 / Shorts / 短视频 | suggest `--preset shorts` and the 3/15/30 s opening plan (§0b) |
 | exact numbers ("cut pauses over 1.5 s down to 0.5 s") | `--max-pause 1.5 --keep-pause 0.5` |
 | don't cut anything / subtitles only | `--no-cut` |
 | remove filler words / uh, um / 去掉嗯啊、口头禅 | `--cut-fillers`, then review (§5) |
@@ -61,7 +92,7 @@ transcription. Use `--redo-asr` only if the transcript itself is bad.
 
 Read `<out>/report.md`. Report to the user: edited length and how much was removed, number of
 subtitle lines, the Jianying draft name (it appears in Jianying's 本地草稿 list), the MP4 path, and
-any PROBLEMS lines. Exit code 2 means a validation check failed — say which, don't claim success.
+any PROBLEMS lines. For short-video platforms, also give the hook / value / roadmap times (§0b). Exit code 2 means a validation check failed — say which, don't claim success.
 
 ## 5. Review filler words (with --cut-fillers)
 

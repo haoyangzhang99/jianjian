@@ -64,7 +64,9 @@ Or ask your coding agent in plain language:
 > Edit ~/Videos/episode.mp4 for Jianying: trim the pauses, cut filler words, add Chinese and English
 > subtitles, and export it.
 
-The agent asks which pause preset to use before it starts (see `skill/SKILL.md`).
+The agent asks which pause preset to use before it starts (see `skill/SKILL.md`). For Douyin,
+Xiaohongshu or Shorts it also proposes a 3 / 15 / 30 s opening (hook, value, structure) and trims
+the preamble so the edit opens on the hook.
 
 Output goes to `<video folder>/<name>_edit/`:
 
