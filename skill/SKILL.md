@@ -72,6 +72,7 @@ rank on completion, engagement and share rate, and the opening decides whether p
 | pause pace | `--preset NAME`: **always ask first**, §0 |
 | for Douyin / 小红书 / Shorts / 短视频 | suggest `--preset shorts` and the 3/15/30 s opening plan (§0b) |
 | open on a later line / cold open / 先放高光 | `--hook START-END` (source time; `--hook-mode move` to not repeat it), §0b |
+| put this clip / scene / B-roll in / 插入片段 | `--insert AT=CLIP` (source time; plays at normal speed with its own sound), §4 |
 | exact numbers ("cut pauses over 1.5 s down to 0.5 s") | `--max-pause 1.5 --keep-pause 0.5` |
 | don't cut anything / subtitles only | `--no-cut` |
 | remove filler words / uh, um / 去掉嗯啊、口头禅 | `--cut-fillers`, then review (§4) |
@@ -118,7 +119,9 @@ listed. Read `<out>/fillers_review.md` (each candidate in context), then edit `<
   lists ("a red shirt or a red hat") and plain repetition ("talking about it"). Each
   approved passage also leaves the subtitles; recheck the Chinese of the lines listed as CHECK;
 - B-roll: `report.md` lists insert points where a speaker asks for something to be shown ("put the
-  clip here"), with their time in the edit. Tell the user; jianjian can't source the footage.
+  clip here"), with their time in the edit. Tell the user; jianjian can't source the footage. When
+  they give you the clip, add `--insert AT=CLIP` with AT = the end of the sentence before the
+  request (source time), and cut the request itself ("we should show that clip") as a content cut.
 Rerun with `--fillers <out>/fillers.json` (fast: both transcripts are cached). Optionally check with
 `.venv/bin/python tools/verify_words.py <out>`: "inside a removed span" must be 0.
 

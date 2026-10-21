@@ -10,6 +10,7 @@ may add restarts (false starts) by word range. Rerun with --fillers reviewed.jso
 """
 from __future__ import annotations
 
+import bisect
 import math
 import re
 from typing import Dict, List, Sequence, Tuple
@@ -30,6 +31,11 @@ DISCOURSE = [("you", "know"), ("i", "mean"), ("kind", "of"), ("sort", "of"), ("l
 
 def norm(w: str) -> str:
     return re.sub(r"[^\w']", "", w.lower()).strip("'")
+
+
+def _ends_sentence(w: dict) -> bool:
+    t = w["w"].strip()
+    return t.endswith((".", "?", "!", "。", "？", "！")) and not t.endswith("..")
 
 
 def detect(words: Sequence[dict]) -> List[dict]:
@@ -55,6 +61,8 @@ def detect(words: Sequence[dict]) -> List[dict]:
                 continue
             if words[i + size]["s"] - words[i + size - 1]["e"] > 1.0:
                 continue  # a long pause between the copies: probably deliberate
+            if _ends_sentence(words[i + size - 1]):
+                continue  # "what do you call this? This is art", "it's for. For real": two sentences
             add(i, i + size - 1, "repeat", True)
     # stutters with a hesitation between the copies ("they, uh, they", "the, um, the"): compare the
     # words with uh/um left out; the uh between them is already a hesitation candidate
@@ -70,6 +78,8 @@ def detect(words: Sequence[dict]) -> List[dict]:
             if size == 1 and (ft[p] in INTENSIFIERS or ft[p] not in FUNCTION_WORDS):
                 continue
             if words[second[0]]["s"] - words[first[-1]]["e"] > 1.5:
+                continue
+            if _ends_sentence(words[first[-1]]):
                 continue
             add(first[0], first[-1], "repeat", True)
     # word restarts: a word cut short and said again in full ("re-, re-, uh, remember"); a judgement
@@ -176,11 +186,18 @@ def spans(cands: Sequence[dict], words: Sequence[dict], fps: int, min_len: float
           audio=None) -> List[Tuple[float, float]]:
     """Source-time spans to remove for the candidates marked cut. Each span is clamped so it never
     reaches into the neighbouring words, then snapped inward to the frame grid. With the 16-kHz
-    audio, hesitations are re-located on the waveform (see locate_hesitation)."""
+    audio, hesitations are re-located on the waveform (see locate_hesitation).
+    Content cuts that touch (no kept word between them, e.g. a passage and the restart next to it)
+    are joined into one span: speech the transcript skipped between them was left in otherwise."""
     out = []
-    for c in cands:
-        if not c["cut"]:
-            continue
+    joined: List[dict] = []
+    for c in sorted((c for c in cands if c["cut"]), key=lambda c: c["words"][0]):
+        p = joined[-1] if joined else None
+        if p and c["words"][0] <= p["words"][1] + 1 and "content" in (p["kind"], c["kind"]):
+            joined[-1] = {**p, "words": [p["words"][0], max(p["words"][1], c["words"][1])], "kind": "content"}
+        else:
+            joined.append(c)
+    for c in joined:
         i, j = c["words"]
         a, b = words[i]["s"], words[j]["e"]
         lo = words[i - 1]["e"] if i > 0 else max(0.0, a - 1.0)
@@ -231,6 +248,9 @@ def _strip_phrase(text: str, phrase: List[str], repeat: bool, frac: float) -> st
     return out
 
 
+_PURE_FILLERS = {"uh", "um", "umm", "uhm", "uhh", "er", "erm"}  # never meant: unlike "hmm" or "ah"
+
+
 def tidy_subtitle(text: str) -> str:
     """Subtitle hygiene: no uh/um, no doubled small words ("the the"), no dangling comma."""
     toks = text.split()
@@ -243,10 +263,12 @@ def tidy_subtitle(text: str) -> str:
                 kept[-1] = kept[-1][:-1]  # "It was, uh, one" -> "It was one"
             continue
         kept.append(t)
+    if not kept and all(norm(t) in _PURE_FILLERS for t in toks):
+        return ""  # a line that is only "Uh" or "Um, um" goes (the caller drops empty lines)
     kept = kept or toks  # never empty a "Hmm." line
     out: List[str] = []
     for t in kept:
-        if out and norm(t) == norm(out[-1]) and norm(t) in FUNCTION_WORDS:
+        if out and norm(t) == norm(out[-1]) and norm(t) in FUNCTION_WORDS and out[-1][-1:] not in _END_PUNCT:
             out[-1] = t if out[-1][-1:] in ",;:" else out[-1]  # keep the second copy's punctuation
             continue
         out.append(t)
@@ -255,12 +277,47 @@ def tidy_subtitle(text: str) -> str:
     return text[:1].upper() + text[1:] if toks and toks[0][:1].isupper() else text
 
 
+def _count(toks: Sequence[str], phrase: List[str]) -> int:
+    """Non-overlapping occurrences of the word sequence `phrase` in toks (compared with norm())."""
+    phrase = [p for p in phrase if p not in HESITATIONS]
+    keys = [k for k in (norm(t) for t in toks) if k and k not in HESITATIONS]
+    if not phrase:
+        return 0
+    n, i, hits = len(phrase), 0, 0
+    while i + n <= len(keys):
+        if keys[i:i + n] == phrase:
+            hits, i = hits + 1, i + n
+        else:
+            i += 1
+    return hits
+
+
+def _kept_count(q, phrase: List[str], words: Sequence[dict], gone: set, mids: List[float]) -> int:
+    """How often `phrase` is still spoken (no word of it cut) while subtitle q is on screen.
+    mids: the words' midpoints (sorted), for a quick lookup."""
+    phrase = [p for p in phrase if p not in HESITATIONS]
+    lo, hi = bisect.bisect_left(mids, q.start - 0.1), bisect.bisect_right(mids, q.end + 0.1)
+    idx = [i for i in range(lo, hi) if norm(words[i]["w"]) and norm(words[i]["w"]) not in HESITATIONS]
+    keys = [norm(words[i]["w"]) for i in idx]
+    if not phrase:
+        return 0
+    n, k, hits = len(phrase), 0, 0
+    while k + n <= len(keys):
+        if keys[k:k + n] == phrase and not any(idx[j] in gone for j in range(k, k + n)):
+            hits, k = hits + 1, k + n
+        else:
+            k += 1
+    return hits
+
+
 def strip_from_cues(cues, cands: Sequence[dict], words: Sequence[dict]) -> Tuple[List[int], List[int]]:
     """Remove cut words (repeats, discourse words, restarts) from the subtitle text so the subtitles
     match the edited audio, then tidy every English line (tidy_subtitle). Longest cuts go first, so a
     restart is removed before the "like" inside it.
     Returns (ids of changed cues, ids whose existing translation may still contain a cut filler)."""
     changed, flag = [], []
+    gone = cut_word_indices(cands)
+    mids = [(w["s"] + w["e"]) / 2 for w in words]
     ordered = sorted(describe(cands, words), key=lambda c: c["words"][0] - c["words"][1])
     for c in ordered:
         if not c["cut"] or c["kind"] == "hesitation":
@@ -278,6 +335,8 @@ def strip_from_cues(cues, cands: Sequence[dict], words: Sequence[dict]) -> Tuple
                     continue
                 part = [norm(w["w"]) for w in span if q.start - 0.05 <= (w["s"] + w["e"]) / 2 <= q.end + 0.05
                         and norm(w["w"]) and norm(w["w"]) not in HESITATIONS]
+                if part and _count(q.text.split(), part) <= _kept_count(q, part, words, gone, mids):
+                    continue  # the line already leaves the cut copy out (see below)
                 new = _strip_phrase(q.text, part, False, 0.0 if c["start"] <= q.start else 1.0) if part else q.text
                 if new != q.text:
                     q.text = new
@@ -295,6 +354,11 @@ def strip_from_cues(cues, cands: Sequence[dict], words: Sequence[dict]) -> Tuple
 
         near = sorted((q for q in cues if q.lang == "en" and overlap(q) > 0), key=lambda q: -overlap(q))
         for q in near:
+            if _count(q.text.split(), phrase) <= _kept_count(q, phrase, words, gone, mids):
+                # the subtitle text (from the clean transcript) often already leaves the cut copy out
+                # ("it took a, maybe a whole week" -> "it took maybe a whole week"); stripping again
+                # removed a word that is still spoken
+                break
             frac = (mid - q.start) / max(q.end - q.start, 1e-3)
             new = _strip_phrase(q.text, phrase, c["kind"] == "repeat", min(max(frac, 0.0), 1.0))
             if new != q.text:

@@ -51,6 +51,7 @@ class KeepRange:
     src_start: float
     src_end: float
     tl_start: float
+    media: int = 0  # 0 = the recording; n = the n-th inserted clip (--insert)
 
     @property
     def dur(self) -> float:
@@ -168,10 +169,11 @@ def keep_ranges_from_cuts(cuts: Sequence[Interval], duration: float, fps: int) -
 
 def source_runs(keeps: Sequence[KeepRange]) -> List[List[KeepRange]]:
     """Split keep ranges (in timeline order) into runs that are in source order. An ordinary edit
-    is one run; a cold open (--hook) puts runs before it that jump back in the source."""
+    is one run; a cold open (--hook) puts runs before it that jump back in the source, and an
+    inserted clip (--insert) is a run of its own."""
     runs: List[List[KeepRange]] = []
     for k in keeps:
-        if runs and k.src_start >= runs[-1][-1].src_end - 1e-9:
+        if runs and k.media == runs[-1][-1].media and k.src_start >= runs[-1][-1].src_end - 1e-9:
             runs[-1].append(k)
         else:
             runs.append([k])
@@ -214,15 +216,58 @@ def apply_hooks(keeps: Sequence[KeepRange], hooks: Sequence[Interval], fps: int,
     return out
 
 
+def apply_inserts(keeps: Sequence[KeepRange], inserts: Sequence[Tuple[float, float]], fps: int) -> List[KeepRange]:
+    """Put clips into the edit: inserts are (source second of the recording, clip length in seconds),
+    clip n+1 is media n+1. Each clip goes in where that moment plays (the in-context place if a cold
+    open repeats it); a moment inside a cut snaps to the cut, and a keep range is split if needed.
+    Everything after a clip moves later by its length. A moment within 0.3 s of a keep range's edge
+    snaps to that edge instead of splitting the range: a piece that short can't hold a word."""
+    out = [KeepRange(k.src_start, k.src_end, k.tl_start, k.media) for k in keeps]
+    snap = int(round(0.3 * fps))
+    for n, (at, length) in sorted(enumerate(inserts), key=lambda x: x[1][0]):
+        f, nf = int(round(at * fps)), int(round(length * fps))
+        if nf <= 0:
+            raise ValueError(f"inserted clip {n + 1} is empty")
+        main = [i for i, k in enumerate(out) if k.media == 0]
+        # the last source-ordered run of the recording that reaches this moment (cf. TimeMap.to_timeline)
+        pos = None
+        for i in reversed(main):
+            k = out[i]
+            fa, fb = int(round(k.src_start * fps)), int(round(k.src_end * fps))
+            if fa < f < fb:
+                if fb - f <= snap:  # near the end of a keep range: after it (a split left a 1-frame
+                    pos = i + 1     # sliver of the next word playing after the clip)
+                elif f - fa <= snap:
+                    pos = i
+                else:  # inside a keep range: split it
+                    out[i:i + 1] = [KeepRange(fa / fps, f / fps, k.tl_start),
+                                    KeepRange(f / fps, fb / fps, k.tl_start + (f - fa) / fps)]
+                    pos = i + 1
+                break
+            if fb <= f:  # in the cut (or at the boundary) after this range
+                pos = i + 1
+                break
+        if pos is None:
+            pos = main[0] if main else 0
+        tl = out[pos - 1].tl_end if pos > 0 else 0.0
+        out.insert(pos, KeepRange(0.0, nf / fps, tl, media=n + 1))
+        t = tl
+        for k in out[pos:]:
+            k.tl_start = round(t * fps) / fps
+            t = k.tl_start + k.dur
+    return out
+
+
 class TimeMap:
     """Maps source time <-> edited timeline time through a list of keep ranges (in timeline
     order). With a cold open a source moment can appear twice; to_timeline() then returns the
-    later, in-context place and spans() returns every place."""
+    later, in-context place and spans() returns every place. Inserted clips take up timeline time
+    but map to no source time."""
 
     def __init__(self, keeps: Sequence[KeepRange]):
         self.keeps = list(keeps)
         self._tl_starts = [k.tl_start for k in self.keeps]
-        self.runs = [(r, [k.src_start for k in r]) for r in source_runs(self.keeps)]
+        self.runs = [(r, [k.src_start for k in r]) for r in source_runs(self.keeps) if r[0].media == 0]
 
     @property
     def edited_duration(self) -> float:
@@ -240,12 +285,17 @@ class TimeMap:
         return k.tl_end  # inside the cut after range i
 
     def to_timeline(self, t: float) -> float:
-        """Source time -> timeline time: the last run that keeps t, else the main (last) run."""
+        """Source time -> timeline time: the last run that keeps t; for a moment inside a cut, the
+        last run that starts before it (an inserted clip splits the edit into several runs, so the
+        last run is not always the one that holds the cut)."""
         if not self.keeps:
             return 0.0
         for run, starts in reversed(self.runs):
             i = bisect.bisect_right(starts, t) - 1
             if i >= 0 and t <= run[i].src_end:
+                return self._in_run(run, starts, t)
+        for run, starts in reversed(self.runs):
+            if starts[0] <= t:
                 return self._in_run(run, starts, t)
         return self._in_run(*self.runs[-1], t)
 
@@ -264,6 +314,9 @@ class TimeMap:
         i = bisect.bisect_right(self._tl_starts, tl) - 1
         i = max(0, min(i, len(self.keeps) - 1))
         k = self.keeps[i]
+        if k.media:  # inside an inserted clip: the moment of the recording it was put at
+            rest = [x for x in self.keeps[i:] if not x.media]
+            return rest[0].src_start if rest else max((x.src_end for x in self.keeps[:i] if not x.media), default=0.0)
         return k.src_start + min(max(tl - k.tl_start, 0.0), k.dur)
 
 
@@ -281,7 +334,8 @@ def stats(keeps: Sequence[KeepRange], duration: float, fps: int = 30) -> dict:
     """Keeps end on the 1/fps grid, so the source's last partial frame is never used; it is not a cut."""
     end = int(duration * fps + 1e-6) / fps
     edited = keeps[-1].tl_end if keeps else 0.0
-    kept = merge_intervals((k.src_start, k.src_end) for k in keeps)  # source used (a hook may repeat)
+    # source used (a hook may repeat; inserted clips aren't the source)
+    kept = merge_intervals((k.src_start, k.src_end) for k in keeps if k.media == 0)
     removed = []
     prev_end = 0.0
     for a, b in kept:
@@ -299,4 +353,5 @@ def stats(keeps: Sequence[KeepRange], duration: float, fps: int = 30) -> dict:
         "num_cuts": len(removed),
         "longest_cut": round(max(removed), 3) if removed else 0.0,
         "num_segments": len(keeps),
+        "inserted_seconds": round(sum(k.dur for k in keeps if k.media), 3),
     }

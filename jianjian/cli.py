@@ -13,8 +13,8 @@ import sys
 import time
 
 from . import __version__
-from .cuts import (PRESET_ALIASES, PRESETS, CutSettings, TimeMap, apply_hooks, keep_ranges_from_cuts, plan,
-                   preset_table, stats)
+from .cuts import (PRESET_ALIASES, PRESETS, CutSettings, TimeMap, apply_hooks, apply_inserts, keep_ranges_from_cuts,
+                   plan, preset_table, stats)
 from .subs import Cue, CueSettings, build_cues, remap, write_ass, write_srt
 from .util import (die, find_ffmpeg, ffmpeg_caps, fmt_dur, is_mac, log, mac_ram_gb, read_json,
                    set_log_file, write_json)
@@ -66,6 +66,21 @@ def parse_span(text: str):
         raise argparse.ArgumentTypeError(f"expected START-END in source time, e.g. 312.4-318.9 or 5:12.4-5:18.9, "
                                          f"got {text!r}")
     return span
+
+
+def parse_insert(text: str):
+    """--insert value "AT=CLIP" (AT: source time of the recording, seconds or m:ss) -> (seconds, path)."""
+    at, sep, path = text.partition("=")
+    try:
+        t = _seconds(at)
+    except ValueError:
+        t = None
+    path = os.path.abspath(os.path.expanduser(path))
+    if not sep or t is None or t < 0:
+        raise argparse.ArgumentTypeError(f"expected AT=CLIP, e.g. 312.4=clip.mov or 5:12.4=clip.mov, got {text!r}")
+    if not os.path.isfile(path):
+        raise argparse.ArgumentTypeError(f"clip not found: {path}")
+    return t, path
 
 
 def _pick_mt_model(arg: str) -> str:
@@ -221,10 +236,47 @@ def cmd_edit(a) -> int:
                     if float(w["s"]) + 0.02 < t < float(w["e"]) - 0.02:
                         log(f"NOTE: hook {which} {t:.2f}s falls inside the word {w['w'].strip()!r} "
                             f"({w['s']:.2f}-{w['e']:.2f}s); use word or cue times from original-timeline.srt")
+    insert_media = []  # (path, MediaInfo) of the converted clips that media 1, 2, ... refer to
+    if a.insert:
+        # clips put into the edit (a film scene the speakers talk about): converted to fit, see inserts.py
+        from .inserts import loudness, prepare
+        ff = find_ffmpeg()
+        if not ff:
+            die("--insert needs ffmpeg (run setup.sh)")
+        lpath = os.path.join(work, "loudness.json")
+        ld = read_json(lpath) if os.path.exists(lpath) else {}
+        if ld.get("src") != src or ld.get("size") != os.path.getsize(src):
+            lufs, peak = loudness(ff, src)
+            ld = {"src": src, "size": os.path.getsize(src), "lufs": lufs, "peak": peak}
+            write_json(lpath, ld)
+        idir = os.path.join(out, "inserts")
+        os.makedirs(idir, exist_ok=True)
+        enc = "libx264" if ffmpeg_caps(ff).get("libx264") else "h264_videotoolbox"
+        report["inserts"], lengths = [], []
+        for n, (at, clip) in enumerate(a.insert, 1):
+            dest = os.path.join(idir, f"{n}_{os.path.splitext(os.path.basename(clip))[0]}.mp4")
+            try:
+                mi, done = prepare(ff, clip, dest, info.width, info.height, a.fps, a.speed, ld.get("lufs"), encoder=enc)
+            except (ValueError, RuntimeError) as e:
+                die(f"--insert: {e}")
+            insert_media.append((dest, mi))
+            lengths.append(min(done["frames"], int(mi.duration * a.fps + 1e-6)) / a.fps)
+            report["inserts"].append({"at": at, "file": dest, **done})
+        try:
+            keeps = apply_inserts(keeps, [(at, n) for (at, _), n in zip(a.insert, lengths)], a.fps)
+        except ValueError as e:
+            die(f"--insert: {e}")
+        for k in keeps:
+            if k.media:
+                r = report["inserts"][k.media - 1]
+                r["edit_time"], r["edit_seconds"] = round(k.tl_start / a.speed, 2), round(k.dur / a.speed, 2)
+                log(f"insert: {os.path.basename(r['clip'])} plays at {fmt_dur(r['edit_time'])} in the edit "
+                    f"({r['edit_seconds']:.1f}s, {r['gain_db']:+.1f} dB)")
     st = stats(keeps, info.duration, a.fps)
     write_json(os.path.join(out, "cuts.json"), {
         "settings": cs.to_dict(), "stats": st,
-        "keep_ranges": [[round(k.src_start, 4), round(k.src_end, 4), round(k.tl_start, 4)] for k in keeps],
+        "keep_ranges": [[round(k.src_start, 4), round(k.src_end, 4), round(k.tl_start, 4)] + ([k.media] if k.media else [])
+                        for k in keeps],
         "removed": [[round(x, 3), round(y, 3)] for x, y in cuts]})
     log(f"cuts: removed {st['num_cuts']} pauses/fillers, {st['removed_seconds']:.1f}s "
         f"({st['removed_percent']}%), {fmt_dur(st['source_duration'])} -> {fmt_dur(st['edited_duration'])}")
@@ -234,7 +286,7 @@ def cmd_edit(a) -> int:
     tmap = TimeMap(keeps)
     # B-roll: places where a speaker asks for something to be shown ("put the clip here")
     from .content import broll_markers
-    report["broll"] = [{**m, "edit_time": round(tmap.to_timeline(m["start"]) / a.speed, 2)} for m in broll_markers(tr["words"])]
+    report["broll"] = [{**m, "edit_time": round(tmap.to_timeline(m["start"]) / a.speed, 2)} for m in broll_markers(tr["words"], *([vw] if vw else []))]
     for m in report["broll"]:
         log(f"B-roll: insert point at {fmt_dur(m['edit_time'])} in the edit: {m['text'][:70]!r}")
 
@@ -245,15 +297,6 @@ def cmd_edit(a) -> int:
         log(f"cues: loaded {len(cues)} edited cues from {a.cues}")
     else:
         cues = build_cues(tr["words"], CueSettings(max_units=a.max_chars))
-        if os.path.exists(cues_path) and not a.retranslate:
-            old = {(d["start"], d["text"]): d.get("translation", "") for d in read_json(cues_path)}
-            reused = 0
-            for c in cues:
-                t = old.get((c.start, c.text))
-                if t:
-                    c.translation, reused = t, reused + 1
-            if reused:
-                log(f"cues: reused {reused} translations from previous run")
     if cands:
         # subtitles say what the edit says: cut repeats / discourse words / restarts leave the text
         from .fillers import strip_from_cues
@@ -264,6 +307,18 @@ def cmd_edit(a) -> int:
             log(f"subtitles: CHECK the Chinese of lines {flag}: it may still translate a cut filler")
         report.setdefault("fillers", {})["subtitle_lines_changed"] = len(changed)
         report["fillers"]["check_translation"] = flag
+    if not a.cues and os.path.exists(cues_path) and not a.retranslate:
+        # reuse translations of lines whose final text is unchanged (cues.json holds the text after
+        # filler words were removed, so match after that step: matching before it missed ~40% of the
+        # lines and translated them again on every run)
+        old = {(d["start"], d["text"]): d.get("translation", "") for d in read_json(cues_path)}
+        reused = 0
+        for c in cues:
+            t = old.get((c.start, c.text))
+            if t:
+                c.translation, reused = t, reused + 1
+        if reused:
+            log(f"cues: reused {reused} translations from previous run")
     nz = sum(1 for c in cues if c.lang == "zh")
     log(f"cues: {len(cues)} subtitle lines ({nz} Chinese, {len(cues) - nz} English)")
 
@@ -298,6 +353,20 @@ def cmd_edit(a) -> int:
         report["speed"] = a.speed
         if a.speed > 1.15:
             log("NOTE: above ~1.15x speech starts to sound rushed")
+    for k in keeps:  # keep subtitles off inserted clips (a line ending right at a clip showed on its first frame)
+        if k.media:
+            a0, b0 = k.tl_start / a.speed, k.tl_end / a.speed
+            for c in tl_cues:
+                if not (c.tl_start < b0 + 0.04 and a0 - 0.04 < c.tl_end):
+                    continue
+                if min(c.tl_end, b0) - max(c.tl_start, a0) > 0.1:
+                    log(f"NOTE: subtitle {c.text[:40]!r} runs into the clip inserted at {fmt_dur(a0)}; "
+                        f"put the clip at a sentence end")
+                if c.tl_start < a0:
+                    c.tl_end = a0 - 0.04
+                else:
+                    c.tl_start = max(c.tl_start, b0 + 0.04)
+            tl_cues = [c for c in tl_cues if c.tl_end - c.tl_start >= 0.1]
     write_srt(os.path.join(out, f"{stem}.zh.srt"), tl_cues, "zh")
     write_srt(os.path.join(out, f"{stem}.en.srt"), tl_cues, "en")
     write_srt(os.path.join(out, f"{stem}.bilingual.srt"), tl_cues, "bi")
@@ -331,9 +400,11 @@ def cmd_edit(a) -> int:
                 name, n = f"{base}_{n}", n + 1
         staging = os.path.join(out, "jianying_draft")
         rec_media, rec_root = _map_path(src, a.path_map), _map_path(root or staging, a.path_map)
+        rec_inserts = [(_map_path(p, a.path_map), m) for p, m in insert_media]
         staged = jd.build_draft(staging, name, info, rec_media, keeps, tl_cues, a.fps,
-                                final_root=rec_root, tracks=order, cards=cards, speed=a.speed)
-        chk = check_draft(staged, keeps, a.fps, rec_media, local_media=src, speed=a.speed)
+                                final_root=rec_root, tracks=order, cards=cards, speed=a.speed, inserts=rec_inserts)
+        chk = check_draft(staged, keeps, a.fps, rec_media, local_media=src, speed=a.speed,
+                          insert_paths=[p for p, _ in rec_inserts])
         report["draft"] = {"name": name, "staged": staged, "check": chk}
         log(f"draft check: {'OK' if chk['ok'] else 'PROBLEMS: ' + '; '.join(chk['problems'])}")
         if root and chk["ok"] and not a.no_install:
@@ -357,9 +428,11 @@ def cmd_edit(a) -> int:
                 log("NOTE: this ffmpeg has no libass; adding subtitles as selectable tracks instead of burning in")
                 srts = [(os.path.join(out, f"{stem}.{t}.srt"), t) for t in order]
             r = render(src, mp4, keeps, info, caps, fps=a.fps, ass_path=ass_path if want_burn else None,
-                       srt_tracks=srts, encoder=a.encoder, speed=a.speed)
+                       srt_tracks=srts, encoder=a.encoder, speed=a.speed, inserts=insert_media)
             probes = [c.tl_start for c in tl_cues][:: max(1, len(tl_cues) // 8)][:8]
-            vr = check_render(mp4, audio, keeps, a.fps, probes, speed=a.speed, ffmpeg=ff)
+            probes += [k.tl_start / a.speed + 1.0 for k in keeps if k.media]  # inside each inserted clip
+            vr = check_render(mp4, audio, keeps, a.fps, sorted(probes), speed=a.speed, ffmpeg=ff,
+                              insert_audio=[asr.load_audio(p) for p, _ in insert_media])
             r["check"] = vr
             report["render"] = {"file": mp4, **r}
             log(f"render check: {'OK' if vr['ok'] else 'PROBLEMS: ' + '; '.join(vr['problems'])}; "
@@ -397,6 +470,9 @@ def _write_report_md(path: str, r: dict) -> None:
     if h:
         lines.append(f"- Cold open: {', '.join(f'{x:.2f}-{y:.2f}s' for x, y in h['spans'])} plays first "
                      f"({h['seconds']}s, {'moved' if h['mode'] == 'move' else 'teaser: also kept in place'})")
+    for x in r.get("inserts", []):
+        lines.append(f"- Inserted clip `{os.path.basename(x['clip'])}` at {fmt_dur(x.get('edit_time', 0))} in the edit "
+                     f"({x.get('edit_seconds')}s, loudness {x['gain_db']:+.1f} dB)")
     fz = r.get("fillers")
     if fz:
         lines.append(f"- Filler words: cut {sum(fz['cut'].values())} of {fz['candidates']} candidates "
@@ -482,6 +558,10 @@ def main(argv=None) -> int:
                         "played in the given order), then the edit from the start")
     g.add_argument("--hook-mode", choices=["teaser", "move"], default="teaser",
                    help="teaser (default): the hook also plays at its original place; move: only at the start")
+    g.add_argument("--insert", type=parse_insert, action="append", default=[], metavar="AT=CLIP",
+                   help="put a clip (e.g. a film scene) into the edit at this moment of the recording (seconds or "
+                        "m:ss; a moment inside a cut snaps to the cut). It plays at normal speed with its own "
+                        "sound, scaled to fit. Repeat for several clips")
     s = e.add_argument_group("subtitles")
     s.add_argument("--lang", default="auto", help="spoken language: auto | zh | en")
     s.add_argument("--subs", choices=["bi", "zh", "en", "none"], default="bi")

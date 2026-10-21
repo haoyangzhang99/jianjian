@@ -14,7 +14,8 @@ SR = 16000
 
 
 def check_draft(draft_dir: str, keeps: Sequence[KeepRange], fps: int, media_path: str,
-                local_media: str = "", speed: float = 1.0) -> dict:
+                local_media: str = "", speed: float = 1.0, insert_paths: Sequence[str] = ()) -> dict:
+    """insert_paths: the converted clips (--insert) the draft may also use, as Jianying sees them."""
     s = summarize_draft(draft_dir)
     problems: List[str] = []
     expected_us = int(round(round(keeps[-1].tl_end * fps) * 1_000_000 / fps / speed)) if keeps else 0
@@ -51,10 +52,11 @@ def check_draft(draft_dir: str, keeps: Sequence[KeepRange], fps: int, media_path
                     break
                 prev_end = st + du
     for m in s["video_materials"]:
-        if m["path"] != media_path:
-            problems.append(f"material path {m['path']} != {media_path}")
-        if not os.path.exists(local_media or m["path"]):
-            problems.append(f"material file missing: {local_media or m['path']}")
+        if m["path"] != media_path and m["path"] not in insert_paths:
+            problems.append(f"material path {m['path']} is not the recording or an inserted clip")
+        local = (local_media or m["path"]) if m["path"] == media_path else m["path"]
+        if not os.path.exists(local):
+            problems.append(f"material file missing: {local}")
     return {
         "ok": not problems,
         "problems": problems,
@@ -63,14 +65,19 @@ def check_draft(draft_dir: str, keeps: Sequence[KeepRange], fps: int, media_path
     }
 
 
-def _expected_audio(src_audio: np.ndarray, keeps: Sequence[KeepRange]) -> np.ndarray:
+def _expected_audio(src_audio: np.ndarray, keeps: Sequence[KeepRange],
+                    insert_audio: Sequence[np.ndarray] = ()) -> np.ndarray:
     # One frame is 16000/fps samples (533.33 at 30 fps), so each part's length comes from the
     # rounded timeline positions; rounding every part on its own drifts by a few samples per cut.
+    audios = [src_audio] + list(insert_audio)
     parts = []
     for k in keeps:
         a = int(round(k.src_start * SR))
         n = int(round(k.tl_end * SR)) - int(round(k.tl_start * SR))
-        parts.append(src_audio[a:a + n])
+        part = audios[k.media][a:a + n]
+        if len(part) < n:  # a clip's audio a few ms short: the render pads it with silence
+            part = np.concatenate([part, np.zeros(n - len(part), dtype=np.float32)])
+        parts.append(part)
     return np.concatenate(parts) if parts else np.zeros(0, dtype=np.float32)
 
 
@@ -130,7 +137,9 @@ def _envelope_lag(ref: np.ndarray, out: np.ndarray, i: int, win: int, max_lag: i
 
 
 def check_render(out_path: str, src_audio: np.ndarray, keeps: Sequence[KeepRange], fps: int,
-                 probe_times: Sequence[float], speed: float = 1.0, ffmpeg: str = "") -> dict:
+                 probe_times: Sequence[float], speed: float = 1.0, ffmpeg: str = "",
+                 insert_audio: Sequence[np.ndarray] = ()) -> dict:
+    """insert_audio: 16-kHz mono audio of the converted clips that keep ranges with media 1, 2, ... play."""
     from faster_whisper import decode_audio
     problems: List[str] = []
     info = probe(out_path)
@@ -138,7 +147,7 @@ def check_render(out_path: str, src_audio: np.ndarray, keeps: Sequence[KeepRange
     if abs(info.duration - expected) > 0.15:
         problems.append(f"output duration {info.duration:.3f}s != expected {expected:.3f}s")
     out_audio = decode_audio(out_path, sampling_rate=SR)
-    exp_audio = _expected_audio(src_audio, keeps)
+    exp_audio = _expected_audio(src_audio, keeps, insert_audio)
     if speed != 1.0:
         exp_audio = _tempo(exp_audio, speed, ffmpeg)
     audio_len_diff = len(out_audio) / SR - len(exp_audio) / SR

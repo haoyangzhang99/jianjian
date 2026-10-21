@@ -30,10 +30,10 @@ LOGISTICS = re.compile(r"\b(let'?s (start|begin|get started|continue|move on|go 
                        r"are (we|you) ready|where (were|was) (we|i))\b|我们开始|开始吧", re.I)
 WORD_SEARCH = re.compile(r"\b(is that how( you say( it)?)?|how do you say|what'?s the word|what do you call( it)?|"
                          r"is that the (right )?word)\s*\??$|怎么说来着", re.I)
-BROLL = re.compile(r"\b((put|insert|add|show|play|cut to) (the|a|that|this|some) "
+BROLL = re.compile(r"\b((put|insert|add|show|play|cut to|have|use) (the|a|that|this|some) "
                    r"(clip|scene|video|picture|photo|image|footage|trailer|screenshot)|"
                    r"(clip|scene|picture|photo|image|footage|screenshot) (here|in here|right here)|"
-                   r"we should (show|play)|let me show you|here'?s the (clip|scene|picture))|"
+                   r"we (should|can|could|have to|need to|gotta) (show|play)|let me show you|here'?s the (clip|scene|picture))|"
                    r"放(一)?段|插(入|一段)|配(个|张)?图|这里放", re.I)
 
 
@@ -148,12 +148,15 @@ def suggest(words: Sequence[dict], max_preamble: float = 90.0) -> List[dict]:
     return sorted(out, key=lambda c: c["words"][0])
 
 
-def broll_markers(words: Sequence[dict]) -> List[dict]:
-    """Places where a speaker asks for something to be shown: [{word, start, text}]."""
-    out = []
-    for s in sentences(words):
-        text = _text(words, s)
-        if BROLL.search(text):
-            out.append({"word": s[0], "start": round(words[s[0]]["s"], 3), "end": round(words[s[-1]]["e"], 3),
-                        "text": text})
-    return out
+def broll_markers(words: Sequence[dict], *more: Sequence[dict]) -> List[dict]:
+    """Places where a speaker asks for something to be shown: [{start, end, text}]. Pass every
+    transcript there is (clean and verbatim): each can skip a sentence the other has, and on a
+    test episode the clean one dropped a request to show a clip."""
+    out: List[Dict] = []
+    for ws in (words, *more):
+        for s in sentences(ws):
+            text = _text(ws, s)
+            t0, t1 = ws[s[0]]["s"], ws[s[-1]]["e"]
+            if BROLL.search(text) and not any(m["start"] < t1 and t0 < m["end"] for m in out):
+                out.append({"start": round(t0, 3), "end": round(t1, 3), "text": text})
+    return sorted(out, key=lambda m: m["start"])

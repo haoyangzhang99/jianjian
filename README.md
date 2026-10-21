@@ -112,6 +112,7 @@ ideal for YouTube, auto-editor keeps 0.2 s each side, and Chinese 口播 guidanc
 | `--fillers FILE` | | Apply a reviewed `fillers.json` (`"cut": true/false` per candidate; restarts can be added by word range) |
 | `--hook START-END` | | Cold open: play this span of the original (seconds or m:ss, e.g. `10:16.3-10:24.4`) first, then the edit from the start. Repeat for several spans. |
 | `--hook-mode teaser\|move` | teaser | `teaser`: the hook also plays again at its original place; `move`: only at the start |
+| `--insert AT=CLIP` | | Put a clip (a film scene, a screen recording) into the edit at this moment of the original (seconds or m:ss; a moment inside a cut snaps to the cut). It plays at normal speed even with `--speed`, with its own sound matched to the conversation's loudness, scaled to fit the frame. Repeat for several clips. Use the B-roll insert points in `report.md`. |
 | `--speed 1.05` | 1.0 | Play the whole edit faster, voice pitch kept. 1.05× is barely noticeable, 1.1× feels brisk, and above about 1.15× speech sounds rushed. |
 | `--lang auto\|zh\|en` | auto | `auto` detects the language per segment, which suits mixed Chinese/English speakers |
 | `--subs bi\|zh\|en\|none` | bi | Which subtitle languages to create |
@@ -295,9 +296,33 @@ choice. **Add new pitfalls here as you find them.**
   station and ends *at the* airport") and lists (shaped like "a red shirt or a red hat"). Require
   a break (comma, "...", dash or uh) in the abandoned part and no sentence end, and keep restarts
   as suggestions for review.
+- **A word said twice across a sentence end is not a stutter.** The stutter detector cut "what do
+  you call *this*? This is art" and "that's what it's *for*. For real" (the second speaker
+  starts a new sentence with the same word), and a rule cutting a sentence-final "so" also took "I
+  don't think *so*." Only cut a repeat when the first copy doesn't end a sentence, and review
+  sentence-final discourse words one by one. The subtitle tidier had the same blind spot: it
+  merged "for. For real" into "for. real" as if it were "the the".
 - **Meta words occur in normal content.** Matching "recording" or "delete this part" flagged
   ordinary sentences and a joke about deleting a take. Match only unmistakable talk about the call
   ("is it recording", "can you hear me", "you're muted").
+- **A restart cut can flip the meaning.** Cutting from the first copy of a phrase to the second
+  turned a sentence shaped like "the report says, it's not, it *doesn't* say X"
+  into "the report says X". It also drops list items ("if it rains, if it snows") and the
+  subject of a quote ("she says, uh, you know, I quit…"). Review a restart by reading the
+  sentence that is *left*, not the part that is removed; on a 90-minute test episode about a
+  quarter of the suggested restarts had to be kept.
+- **Two content cuts that touched left the speech between them in.** The verbatim transcript skipped
+  4 s ("Okay, go ahead. If you're new here") between the end of one approved cut
+  and the start of the next, so that stretch had no words to cut and stayed in the edit. Join
+  content cuts that have no kept word between them into one span.
+- **A request for B-roll can be missing from one transcript.** The clean transcript dropped a
+  request to show a clip (the verbatim one had it) and misheard "clip" as "cliff" elsewhere.
+  Look for insert points in every transcript there is, and match the request ("we could play it"),
+  not only the noun.
+- **Mapping a moment inside a cut to the edit assumed the edit was one stretch of the recording.**
+  With inserted clips it is several, so a B-roll request inside a cut was reported 20 minutes late
+  (after the last clip) instead of where its clip plays. Map such a moment to the stretch that
+  starts before it.
 
 **Subtitles and translation**
 
@@ -316,10 +341,29 @@ choice. **Add new pitfalls here as you find them.**
   check (built on the same transcript) missed it too. Never treat "not in the transcript" as "cut"
   without checking the audio, and check subtitle coverage against the audio itself (speech
   detection), not against the transcript the subtitles came from.
+- **Removing a cut word from a subtitle removed a word that is still spoken.** Subtitle text comes
+  from the clean transcript, which often already leaves a restart out ("it took a, maybe a
+  whole week" is written "it took maybe a whole week"); stripping the cut "a" again took the real
+  one ("it took maybe whole week"). Only strip a word when the line shows it more often than the edited
+  audio still says it.
+- **Saved translations were looked up by each line's text before filler words were removed,** but
+  saved with the text after, so about 40% of the lines were translated again on every run (2+
+  minutes, and the wording changed between runs). Match saved translations after that step.
 - **Subtitles leave out "uh/um", stutters and filler "you know / like / so"** on purpose. Keep the
   meaningful uses ("I like this", "fruit like apples").
 
 **Render and checks**
+
+- **Cropping a clip to fill the frame would cut off the film's own subtitles.** A screen recording of a
+  film has the subtitles in the black bar under the picture. Inserted clips are scaled to fit and
+  padded, never cropped.
+- **An inserted clip split a keep range one frame before the cut began,** so 33 ms of the next word
+  played right after the clip. Word times are only roughly right, so "the start of the word after"
+  can sit a frame inside the kept audio. Snap an insert point within 0.3 s of a keep range's edge
+  to that edge.
+- **A subtitle that ends exactly where an inserted clip starts showed on the clip's first frame**
+  (times on the sped-up timeline aren't on the frame grid). Keep subtitle lines a frame clear of
+  inserted clips.
 
 - **Homebrew's ffmpeg 8+ has no libass,** so subtitles couldn't be burned in. Prefer an ffmpeg
   with libass (imageio-ffmpeg's build has it).

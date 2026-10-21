@@ -57,3 +57,12 @@ def test_word_restart_is_suggested_not_cut():
 def test_broll_marker():
     ws = seq("I remember that scene. Maybe we should put the clip here. Anyway.")
     assert [m["text"] for m in broll_markers(ws)] == ["Maybe we should put the clip here."]
+
+
+def test_broll_more_phrasings_and_both_transcripts():
+    clean = seq("I love that scene. Anyway.")
+    verbatim = seq("I love that scene. Yeah, we need to show that clip. Anyway, maybe we could play it.")
+    got = [m["text"] for m in broll_markers(clean, verbatim)]
+    assert got == ["Yeah, we need to show that clip.", "Anyway, maybe we could play it."]
+    # the same sentence in both transcripts is listed once
+    assert len(broll_markers(verbatim, verbatim)) == 2

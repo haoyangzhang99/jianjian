@@ -109,6 +109,14 @@ were tried and failed.
 - **Stutters across a filler** ("they, uh, they") are cut like adjacent ones; word restarts
   ("re-, re-, uh, remember") are only suggested ("the, there" can be two words).
 - **B-roll markers** flag requests to show something ("put the clip here") in `report.md`.
+- **Inserted clips (`--insert AT=CLIP`)** are converted once (`inserts.py`) and then treated as a
+  second source: a keep range carries `media` (0 = the recording, n = clip n), so the draft, the
+  render (one input per run), the audio and the checks need no special case. The clip is slowed by
+  `--speed` when converted, so the global speed-up plays it at its normal speed: a film scene isn't
+  sped up with the talk. It is scaled to fit and padded (a crop would cut off the film's subtitles), and
+  its loudness is matched to the recording's integrated loudness, capped so peaks stay under -1 dBFS.
+  The clip goes in where its moment plays; a moment inside a cut snaps to the cut, so give the end
+  of the sentence before it.
 
 ## Subtitles and translation
 

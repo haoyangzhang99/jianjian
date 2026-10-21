@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import subprocess
 import time
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Tuple
 
 from .cuts import KeepRange, source_runs
 from .media import MediaInfo
@@ -27,18 +27,22 @@ def _select_expr(keeps: Sequence[KeepRange], fps: int) -> str:
 
 
 def build_audio(src: str, keeps: Sequence[KeepRange], out_wav: str, audio_start: float = 0.0,
-                fade_ms: float = 15.0) -> float:
+                fade_ms: float = 15.0, inserts: Sequence[Tuple[str, float]] = ()) -> float:
     """Write the edited audio (keep ranges joined, short fade at every join) as 16-bit WAV.
     Streams the source, so memory stays small even for a 2-hour episode. Keep ranges may jump back
-    in the source (a cold open): each source-ordered run is streamed on its own. Returns seconds."""
+    in the source (a cold open) or come from an inserted clip (inserts: (path, audio_start) of
+    media 1, 2, ...): each source-ordered run is streamed on its own. Returns seconds."""
     import wave
 
     import av
 
     sr = AUDIO_SR
     runs = source_runs(keeps)
-    with av.open(src) as c:
-        ch = min(c.streams.audio[0].codec_context.channels or 1, 2)
+    medias = [(src, audio_start)] + list(inserts)
+    ch = 1
+    for path, _ in medias:  # stereo if any clip is stereo (a mono recording plays on both sides)
+        with av.open(path) as c:
+            ch = max(ch, min(c.streams.audio[0].codec_context.channels or 1, 2))
     total, gi = 0, 0
     with wave.open(out_wav, "wb") as wf:
         wf.setnchannels(ch)
@@ -49,7 +53,8 @@ def build_audio(src: str, keeps: Sequence[KeepRange], out_wav: str, audio_start:
             # no fade-in only at the very start of the source; no fade-out only at the very end
             fade_in = [gi + j > 0 or a > 0 for j, (a, _b) in enumerate(ranges)]
             fade_out = [gi + j < len(keeps) - 1 for j in range(len(ranges))]
-            total += _write_run(src, ranges, fade_in, fade_out, wf, ch, audio_start, fade_ms)
+            path, start = medias[run[0].media]
+            total += _write_run(path, ranges, fade_in, fade_out, wf, ch, start, fade_ms)
             gi += len(run)
     return total / sr
 
@@ -113,18 +118,22 @@ def _write_run(src, ranges, fade_in, fade_out, wf, ch, audio_start, fade_ms) -> 
 def render(src: str, out_path: str, keeps: Sequence[KeepRange], info: MediaInfo, caps: dict,
            fps: int = 30, ass_path: Optional[str] = None, srt_tracks: Sequence[tuple] = (),
            video_bitrate: str = "8M", crf: int = 20, encoder: str = "auto",
-           duration_limit: Optional[float] = None, speed: float = 1.0) -> dict:
+           duration_limit: Optional[float] = None, speed: float = 1.0,
+           inserts: Sequence[Tuple[str, MediaInfo]] = ()) -> dict:
+    """inserts: (path, MediaInfo) of the clips that keep ranges with media 1, 2, ... play."""
     if AUDIO_SR % fps:
         raise ValueError(f"fps {fps} must divide {AUDIO_SR} (use 24, 25, 30, 48, 50 or 60)")
     work = os.path.dirname(os.path.abspath(out_path))
     # One input per source-ordered run: a cold open (--hook) jumps back in the source, which a
     # single select can't do. Later runs are opened with a fast seek near their start (PTS put
     # back so the frame grid and select times stay in source time) and joined with concat.
+    # An inserted clip is a run of its own, read from its converted file (inserts.py).
     runs = source_runs(keeps)
+    paths = [src] + [p for p, _ in inserts]
     inputs, chains = [], []
     for i, run in enumerate(runs):
         seek = max(0.0, run[0].src_start - 2.0) if len(runs) > 1 else 0.0
-        inputs += (["-ss", f"{seek:.3f}"] if seek > 0 else []) + ["-i", src]
+        inputs += (["-ss", f"{seek:.3f}"] if seek > 0 else []) + ["-i", paths[run[0].media]]
         restore = f"setpts=PTS+{seek:.3f}/TB," if seek > 0 else ""
         chains.append(f"[{i}:v]{restore}fps={fps},select='{_select_expr(run, fps)}',setpts=N/({fps}*TB)")
     if len(runs) == 1:
@@ -145,7 +154,7 @@ def render(src: str, out_path: str, keeps: Sequence[KeepRange], info: MediaInfo,
         f.write(vchain + (f";\n[{wav_in}:a]atempo={speed}[a]" if speed != 1.0 else ""))
     wav = os.path.join(work, "_render_audio.wav")
     t0 = time.time()
-    build_audio(src, keeps, wav, audio_start=info.audio_start)
+    build_audio(src, keeps, wav, audio_start=info.audio_start, inserts=[(p, m.audio_start) for p, m in inserts])
     log(f"audio built in {time.time() - t0:.0f}s (fades at {len(keeps) - 1} cuts"
         f"{f', {len(runs)} source runs' if len(runs) > 1 else ''})")
 

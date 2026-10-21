@@ -17,7 +17,7 @@ import sys
 import time
 import types
 import uuid
-from typing import List, Sequence
+from typing import List, Sequence, Tuple
 
 from .cuts import KeepRange
 from .media import MediaInfo
@@ -114,8 +114,10 @@ def _subtitle_segment(jy, lines, timerange):
 
 def build_draft(staging_root: str, name: str, info: MediaInfo, media_path: str,
                 keeps: Sequence[KeepRange], cues: Sequence[Cue], fps: int,
-                final_root: str, tracks=("zh", "en"), cards: Sequence[dict] = (), speed: float = 1.0) -> str:
-    """Build the draft in staging_root/name. media_path is the absolute path Jianying will use."""
+                final_root: str, tracks=("zh", "en"), cards: Sequence[dict] = (), speed: float = 1.0,
+                inserts: Sequence[Tuple[str, MediaInfo]] = ()) -> str:
+    """Build the draft in staging_root/name. media_path is the absolute path Jianying will use;
+    inserts are (path for Jianying, MediaInfo) of the clips keep ranges with media 1, 2, ... play."""
     jy = _import_pyjy()
     os.makedirs(staging_root, exist_ok=True)
     folder = jy.DraftFolder(staging_root)
@@ -137,14 +139,16 @@ def build_draft(staging_root: str, name: str, info: MediaInfo, media_path: str,
     def tus(frames: int) -> int:  # position on the final (sped-up) timeline
         return int(round(frames * 1_000_000 / fps / speed))
 
-    mat = _video_material(jy, info, media_path)
-    script.add_material(mat)
+    mats = [_video_material(jy, info, media_path)] + [_video_material(jy, m, p) for p, m in inserts]
+    for mat in mats:
+        script.add_material(mat)
     tl_f = 0
     for i, k in enumerate(keeps):
         fa, fb = int(round(k.src_start * fps)), int(round(k.src_end * fps))
         n = fb - fa
         if n <= 0:
             continue
+        mat = mats[k.media]
         src = jy.Timerange(us(fa), min(us(tl_f + n) - us(tl_f), mat.duration - us(fa)))
         # with --speed the clip is shorter on the timeline than in the source; pyJianYingDraft sets the
         # clip speed from the two lengths, and change_pitch stays off (voices keep their pitch)
