@@ -62,19 +62,19 @@ rank on completion, engagement and share rate, and the opening decides whether p
    repeats the line, a move takes it out of its context. Pauses and fillers inside the hook stay
    cut, its subtitles appear at 0 s, and the draft, MP4 and checks all follow the new order. If the
    recording has no usable hook, offer to record a 3-second hook line to add in Jianying, or
-   (weaker) a card at 0 s with the hook as text (`--cards`, see §4). Never claim the structure is
+   (weaker) a card at 0 s with the hook as text (`--cards`, see §5). Never claim the structure is
    met when it isn't.
 
 ## 1. Map the request to flags
 
 | User says | Flags |
 |---|---|
-| pause pace | `--preset NAME`: **always ask first**; see "Before every new video" below |
+| pause pace | `--preset NAME`: **always ask first**, §0 |
 | for Douyin / 小红书 / Shorts / 短视频 | suggest `--preset shorts` and the 3/15/30 s opening plan (§0b) |
 | open on a later line / cold open / 先放高光 | `--hook START-END` (source time; `--hook-mode move` to not repeat it), §0b |
 | exact numbers ("cut pauses over 1.5 s down to 0.5 s") | `--max-pause 1.5 --keep-pause 0.5` |
 | don't cut anything / subtitles only | `--no-cut` |
-| remove filler words / uh, um / 去掉嗯啊、口头禅 | `--cut-fillers`, then review (§5) |
+| remove filler words / uh, um / 去掉嗯啊、口头禅 | `--cut-fillers`, then review (§4) |
 | make it faster / speed up / 加速 | `--speed 1.05` (subtle) or `1.1` (brisk); keep it ≤ 1.15 |
 | bilingual subtitles (default) | `--subs bi` |
 | Chinese only / English only / no subtitles | `--subs zh` / `--subs en` / `--subs none` |
@@ -102,7 +102,7 @@ Read `<out>/report.md`. Report to the user: edited length and how much was remov
 subtitle lines, the Jianying draft name (it appears in Jianying's 本地草稿 list), the MP4 path, and
 any PROBLEMS lines. For short-video platforms, also give the hook / value / roadmap times (§0b). Exit code 2 means a validation check failed — say which, don't claim success.
 
-## 5. Review filler words (with --cut-fillers)
+## 4. Review filler words (with --cut-fillers)
 
 uh/um and stutter repeats are cut automatically; like / so / you know / I mean / 那个 / 就是 are only
 listed. Read `<out>/fillers_review.md` (each candidate in context), then edit `<out>/fillers.json`:
@@ -122,7 +122,10 @@ listed. Read `<out>/fillers_review.md` (each candidate in context), then edit `<
 Rerun with `--fillers <out>/fillers.json` (fast: both transcripts are cached). Optionally check with
 `.venv/bin/python tools/verify_words.py <out>`: "inside a removed span" must be 0.
 
-## 4. Review subtitles (recommended before publishing)
+## 5. Review subtitles (recommended before publishing)
+
+Do this after the filler review (§4), once the cut is final, so subtitle fixes aren't redone after
+fillers are removed.
 
 The automatic subtitles are well timed but not publish-ready: expect wrong proper names (film
 titles, people, brands), a few mishearings, and about 1 in 10 lines mistranslated. Review all of
