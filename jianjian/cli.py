@@ -13,7 +13,8 @@ import sys
 import time
 
 from . import __version__
-from .cuts import PRESET_ALIASES, PRESETS, CutSettings, KeepRange, TimeMap, plan, preset_table, stats
+from .cuts import (PRESET_ALIASES, PRESETS, CutSettings, TimeMap, apply_hooks, keep_ranges_from_cuts, plan,
+                   preset_table, stats)
 from .subs import Cue, CueSettings, build_cues, remap, write_ass, write_srt
 from .util import (die, find_ffmpeg, ffmpeg_caps, fmt_dur, is_mac, log, mac_ram_gb, read_json,
                    set_log_file, write_json)
@@ -44,6 +45,27 @@ def _map_path(p: str, maps) -> str:
         if p.startswith(frm):
             return to + p[len(frm):]
     return p
+
+
+def _seconds(t: str) -> float:
+    """"312.4", "5:12.4" or "1:05:12.4" -> seconds."""
+    v = 0.0
+    for part in t.strip().split(":"):
+        v = v * 60 + float(part)
+    return v
+
+
+def parse_span(text: str):
+    """--hook value "START-END" (source time, seconds or m:ss) -> (start, end)."""
+    a, sep, b = text.partition("-")
+    try:
+        span = (_seconds(a), _seconds(b))
+    except ValueError:
+        span = None
+    if not sep or not span or span[1] <= span[0]:
+        raise argparse.ArgumentTypeError(f"expected START-END in source time, e.g. 312.4-318.9 or 5:12.4-5:18.9, "
+                                         f"got {text!r}")
+    return span
 
 
 def _pick_mt_model(arg: str) -> str:
@@ -151,20 +173,38 @@ def cmd_edit(a) -> int:
     # 4. cut plan
     mp, kp, _ = PRESETS.get(a.preset, (None, None, ""))
     cs = CutSettings(max_pause=a.max_pause or mp or 0.9, keep_pause=a.keep_pause or kp or 0.45, fps=a.fps)
-    log(f"pause preset: {a.preset or 'custom'} (pauses > {cs.max_pause}s -> {cs.keep_pause}s)")
+    preset = "no cuts" if a.no_cut else a.preset or "custom"
     if a.no_cut:
-        keeps = [KeepRange(0.0, int(info.duration * a.fps) / a.fps, 0.0)]
+        log("pause preset: no cuts (--no-cut: full length, subtitles only)")
+        keeps = keep_ranges_from_cuts([], info.duration, a.fps)
         speech, cuts = [], []
     else:
+        log(f"pause preset: {preset} (pauses > {cs.max_pause}s -> {cs.keep_pause}s)")
         speech, cuts, keeps = plan(vad, protect, info.duration, cs, fill_spans)
-    st = stats(keeps, info.duration)
+    if a.hook:
+        # cold open: the hook spans play first, then the edit from the start (cuts.apply_hooks)
+        opener = sum(max(0.0, min(k.src_end, h1) - max(k.src_start, h0)) for h0, h1 in a.hook for k in keeps)
+        try:
+            keeps = apply_hooks(keeps, a.hook, a.fps, move=a.hook_mode == "move")
+        except ValueError as e:
+            die(f"--hook: {e}")
+        log(f"hook: cold open of {len(a.hook)} span(s), {opener:.1f}s, "
+            f"{'moved from' if a.hook_mode == 'move' else 'also kept at'} its original place")
+        report["hook"] = {"spans": [list(h) for h in a.hook], "mode": a.hook_mode, "seconds": round(opener, 3)}
+        for h0, h1 in a.hook:
+            for w in tr["words"]:
+                for t, which in ((h0, "start"), (h1, "end")):
+                    if float(w["s"]) + 0.02 < t < float(w["e"]) - 0.02:
+                        log(f"NOTE: hook {which} {t:.2f}s falls inside the word {w['w'].strip()!r} "
+                            f"({w['s']:.2f}-{w['e']:.2f}s); use word or cue times from original-timeline.srt")
+    st = stats(keeps, info.duration, a.fps)
     write_json(os.path.join(out, "cuts.json"), {
         "settings": cs.to_dict(), "stats": st,
         "keep_ranges": [[round(k.src_start, 4), round(k.src_end, 4), round(k.tl_start, 4)] for k in keeps],
         "removed": [[round(x, 3), round(y, 3)] for x, y in cuts]})
     log(f"cuts: removed {st['num_cuts']} pauses/fillers, {st['removed_seconds']:.1f}s "
         f"({st['removed_percent']}%), {fmt_dur(st['source_duration'])} -> {fmt_dur(st['edited_duration'])}")
-    report["cuts"] = {"preset": a.preset or "custom", "settings": cs.to_dict(), **st}
+    report["cuts"] = {"preset": preset, "settings": cs.to_dict(), **st}
     tmap = TimeMap(keeps)
 
     # 4. cues (+ reuse translations from a previous run of the same transcript)
@@ -310,12 +350,17 @@ def _write_report_md(path: str, r: dict) -> None:
              f"- Edited length: {fmt_dur(c.get('edited_duration', 0) / r.get('speed', 1.0))}"
              f"{' at ' + str(r['speed']) + 'x speed' if r.get('speed') else ''} — removed {c.get('num_cuts')} pauses/fillers, "
              f"{c.get('removed_seconds')}s ({c.get('removed_percent')}%), longest {c.get('longest_cut')}s",
+             f"- Pause preset: no cuts (--no-cut)" if c.get('preset') == "no cuts" else
              f"- Pause preset: {c.get('preset')} — max_pause={c.get('settings', {}).get('max_pause')}s, "
              f"keep_pause={c.get('settings', {}).get('keep_pause')}s",
              f"- Transcript: language={r.get('transcript', {}).get('language')}, "
              f"model={r.get('transcript', {}).get('model')}, words={r.get('transcript', {}).get('words')}",
              f"- Subtitles: {r.get('subtitles', {}).get('lines')} lines "
              f"(zh {r.get('subtitles', {}).get('zh')}, en {r.get('subtitles', {}).get('en')})"]
+    h = r.get("hook")
+    if h:
+        lines.append(f"- Cold open: {', '.join(f'{x:.2f}-{y:.2f}s' for x, y in h['spans'])} plays first "
+                     f"({h['seconds']}s, {'moved' if h['mode'] == 'move' else 'teaser: also kept in place'})")
     fz = r.get("fillers")
     if fz:
         lines.append(f"- Filler words: cut {sum(fz['cut'].values())} of {fz['candidates']} candidates "
@@ -391,6 +436,11 @@ def main(argv=None) -> int:
     g.add_argument("--cut-fillers", action="store_true",
                    help="also cut uh/um and stutter repeats; lists like/so/you know for review")
     g.add_argument("--fillers", help="reviewed fillers.json (cut flags decided); implies --cut-fillers")
+    g.add_argument("--hook", type=parse_span, action="append", default=[], metavar="START-END",
+                   help="cold open: play this source span first (seconds or m:ss; repeat for several, "
+                        "played in the given order), then the edit from the start")
+    g.add_argument("--hook-mode", choices=["teaser", "move"], default="teaser",
+                   help="teaser (default): the hook also plays at its original place; move: only at the start")
     s = e.add_argument_group("subtitles")
     s.add_argument("--lang", default="auto", help="spoken language: auto | zh | en")
     s.add_argument("--subs", choices=["bi", "zh", "en", "none"], default="bi")

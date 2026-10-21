@@ -10,6 +10,7 @@ are added, and you get both an editable Jianying draft and a finished MP4.
 - **A new, editable Jianying draft** that references your original file, plus an **MP4** with
   burned-in subtitles, rendered by FFmpeg
 - **Optional speed-up** (e.g. 1.05×) with the voice pitch kept
+- **Cold open** (optional): start a short video on a hook line from later in the recording
 - **Built for coding agents** (Claude Code, Codex): a skill maps plain-language requests to the tool
 
 No paid software, no API keys, and no media leaves the Mac. The network is used only once, to
@@ -66,7 +67,7 @@ Or ask your coding agent in plain language:
 
 The agent asks which pause preset to use before it starts (see `skill/SKILL.md`). For Douyin,
 Xiaohongshu or Shorts it also proposes a 3 / 15 / 30 s opening (hook, value, structure) and trims
-the preamble so the edit opens on the hook.
+the preamble so the edit opens on the hook, or moves a later hook line to the front with `--hook`.
 
 Output goes to `<video folder>/<name>_edit/`:
 
@@ -109,6 +110,8 @@ ideal for YouTube, auto-editor keeps 0.2 s each side, and Chinese 口播 guidanc
 | `--no-cut` | | Keep the full length (subtitles only) |
 | `--cut-fillers` | | Also cut uh/um and stutter repeats. like / so / you know are listed in `fillers_review.md` for review, not cut. |
 | `--fillers FILE` | | Apply a reviewed `fillers.json` (`"cut": true/false` per candidate; restarts can be added by word range) |
+| `--hook START-END` | | Cold open: play this span of the original (seconds or m:ss, e.g. `10:16.3-10:24.4`) first, then the edit from the start. Repeat for several spans. |
+| `--hook-mode teaser\|move` | teaser | `teaser`: the hook also plays again at its original place; `move`: only at the start |
 | `--speed 1.05` | 1.0 | Play the whole edit faster, voice pitch kept. 1.05× is barely noticeable, 1.1× feels brisk, and above about 1.15× speech sounds rushed. |
 | `--lang auto\|zh\|en` | auto | `auto` detects the language per segment, which suits mixed Chinese/English speakers |
 | `--subs bi\|zh\|en\|none` | bi | Which subtitle languages to create |
@@ -180,6 +183,7 @@ conversation recorded on a video call. A full run (transcribe, translate, draft,
 | Jianying draft | New draft in 本地草稿: 1 video track referencing the original file, 1 bilingual text track; opens in Jianying 11.5 |
 | MP4 export | 1080p, 30 fps, VideoToolbox; duration exact, A/V sync within 10 ms at every probe (also at 1.05×) |
 | Speed-up | 1.05×: subtitle starts vs spoken words median −3 ms, no drift |
+| Cold open (`--hook`) | A line from 10:16 played first, as a teaser and moved (also with two hooks): the draft and MP4 open on it, its subtitles start at 0.07 s on the spoken word, all sync probes within 10 ms (also at 1.05×) |
 | Validation | `report.md` lists each check; the command exits with code 2 if one fails |
 
 **Partially automated**
@@ -205,10 +209,6 @@ conversation recorded on a video call. A full run (transcribe, translate, draft,
 - Speaker labels (diarization).
 - Jianying templates, stickers or effects; the draft holds video and text tracks only.
 
-## Troubleshooting
-
-| Problem | Fix |
-|---|---|
 ## Pitfalls
 
 Every mistake found while building and using jianjian is written down here: what went wrong, why,
@@ -295,6 +295,10 @@ choice. **Add new pitfalls here as you find them.**
 
 - **Qwen2.5-3B is not open source** ("qwen-research" license). The low-RAM fallback is Qwen2.5-1.5B.
 
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
 | `jianjian is not set up yet` | `bash setup.sh` |
 | `jianjian: command not found` | Add `~/.local/bin` to your PATH, or run `bin/jianjian` from the repo |
 | Draft doesn't appear in Jianying | Go back to the Jianying home page or restart Jianying, then check `report.md` → "Installed at" |

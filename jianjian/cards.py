@@ -20,8 +20,9 @@ def load_cards(path: str, tmap: TimeMap) -> List[dict]:
     raw = read_json(path)
     out = []
     end_tl = tmap.edited_duration
-    for i, c in enumerate(sorted(raw, key=lambda c: float(c["at"]))):
-        a = tmap.to_timeline(float(c["at"]))
+    # sorted by timeline position: with a cold open (--hook) that can differ from source order
+    placed = sorted((tmap.to_timeline(float(c["at"])), i, c) for i, c in enumerate(raw))
+    for a, i, c in placed:
         b = min(a + float(c.get("duration", 6.0)), end_tl)
         if out and a < out[-1]["tl_end"]:          # one card at a time
             out[-1]["tl_end"] = a - 0.05

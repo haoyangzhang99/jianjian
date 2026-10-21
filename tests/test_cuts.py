@@ -1,5 +1,7 @@
+import pytest
+
 from jianjian.cuts import (PRESET_ALIASES, PRESETS, CutSettings, TimeMap, compute_cuts, keep_ranges_from_cuts,
-                           merge_intervals, plan)
+                           merge_intervals, plan, stats)
 
 
 def test_merge_intervals_joins_overlaps_and_small_gaps():
@@ -57,3 +59,16 @@ def test_presets_are_sane():
         assert use
     for old, new in PRESET_ALIASES.items():
         assert new in PRESETS
+
+
+def test_no_cut_keeps_everything_and_reports_zero_cuts():
+    # 120.016 s is not a whole number of frames: the partial last frame must not count as a cut
+    keeps = keep_ranges_from_cuts([], 120.016, 30)
+    assert len(keeps) == 1 and keeps[0].src_start == keeps[0].tl_start == 0.0
+    assert TimeMap(keeps).to_timeline(60.0) == 60.0
+    st = stats(keeps, 120.016, 30)
+    assert st["num_cuts"] == 0 and st["removed_seconds"] == 0.0 and st["longest_cut"] == 0.0
+
+
+def test_whole_frame_duration_keeps_its_last_frame():
+    assert keep_ranges_from_cuts([], 4.0, 30)[0].src_end == pytest.approx(4.0)

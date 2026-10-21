@@ -53,10 +53,17 @@ rank on completion, engagement and share rate, and the opening decides whether p
    candidates to `"cut": false`.
 4. Check the edited timeline (`<out>/<name>.zh.srt` or `.bilingual.srt`, already speed-adjusted):
    hook within the first second, value by 15 s, roadmap by 30 s. Put these three times in your report.
-5. jianjian cuts but never reorders clips. If the best hook comes later than the value or roadmap,
-   or the recording has no usable hook, say so and offer: move that clip to the front in Jianying
-   after the draft is built, record a 3-second hook line to add in Jianying, or (weaker) a card at
-   0 s with the hook as text (`--cards`, see §4). Never claim the structure is met when it isn't.
+5. If the best hook comes later in the recording, open on it with a cold open:
+   `--hook START-END` (source time from `original-timeline.srt`, seconds or m:ss; repeat the flag
+   for several spans, played in the given order). Take START and END from the line's cue times so
+   the hook starts and ends on whole words; jianjian logs a NOTE when a bound falls inside a word.
+   By default the hook plays first and again at its original place (`--hook-mode teaser`, like a
+   精彩预告); `--hook-mode move` plays it only at the start. Ask which the user wants: a teaser
+   repeats the line, a move takes it out of its context. Pauses and fillers inside the hook stay
+   cut, its subtitles appear at 0 s, and the draft, MP4 and checks all follow the new order. If the
+   recording has no usable hook, offer to record a 3-second hook line to add in Jianying, or
+   (weaker) a card at 0 s with the hook as text (`--cards`, see §4). Never claim the structure is
+   met when it isn't.
 
 ## 1. Map the request to flags
 
@@ -64,6 +71,7 @@ rank on completion, engagement and share rate, and the opening decides whether p
 |---|---|
 | pause pace | `--preset NAME`: **always ask first**; see "Before every new video" below |
 | for Douyin / 小红书 / Shorts / 短视频 | suggest `--preset shorts` and the 3/15/30 s opening plan (§0b) |
+| open on a later line / cold open / 先放高光 | `--hook START-END` (source time; `--hook-mode move` to not repeat it), §0b |
 | exact numbers ("cut pauses over 1.5 s down to 0.5 s") | `--max-pause 1.5 --keep-pause 0.5` |
 | don't cut anything / subtitles only | `--no-cut` |
 | remove filler words / uh, um / 去掉嗯啊、口头禅 | `--cut-fillers`, then review (§5) |

@@ -166,29 +166,99 @@ def keep_ranges_from_cuts(cuts: Sequence[Interval], duration: float, fps: int) -
     return out
 
 
+def source_runs(keeps: Sequence[KeepRange]) -> List[List[KeepRange]]:
+    """Split keep ranges (in timeline order) into runs that are in source order. An ordinary edit
+    is one run; a cold open (--hook) puts runs before it that jump back in the source."""
+    runs: List[List[KeepRange]] = []
+    for k in keeps:
+        if runs and k.src_start >= runs[-1][-1].src_end - 1e-9:
+            runs[-1].append(k)
+        else:
+            runs.append([k])
+    return runs
+
+
+def apply_hooks(keeps: Sequence[KeepRange], hooks: Sequence[Interval], fps: int,
+                move: bool = False) -> List[KeepRange]:
+    """Cold open: play the kept parts of each hook span (source seconds, in the order given) first,
+    then the whole edit from the start. Pauses and fillers inside a hook stay cut, and the hook
+    bounds are snapped to the frame grid. move=False repeats the hook at its original place (a
+    teaser); move=True removes it there."""
+    frames = [(int(round(k.src_start * fps)), int(round(k.src_end * fps))) for k in keeps]
+    spans = [(int(round(a * fps)), int(round(b * fps))) for a, b in hooks]
+    for i, (a, b) in enumerate(spans):
+        if b <= a:
+            raise ValueError(f"hook {hooks[i][0]}-{hooks[i][1]} is empty")
+        for c, d in spans[:i]:
+            if a < d and c < b:
+                raise ValueError(f"hooks {hooks[i][0]}-{hooks[i][1]} and {c / fps}-{d / fps} overlap")
+    order: List[Tuple[int, int]] = []
+    for a, b in spans:
+        part = [(max(fa, a), min(fb, b)) for fa, fb in frames if min(fb, b) > max(fa, a)]
+        if not part:
+            raise ValueError(f"hook {a / fps:.2f}-{b / fps:.2f} lies entirely in cut material")
+        order += part
+    if move:
+        frames = [(int(x), int(y)) for x, y in subtract_intervals(frames, spans) if y > x]
+    joined: List[List[int]] = []
+    for fa, fb in order + frames:
+        if joined and joined[-1][1] == fa:  # continues in the source: one range, no extra cut
+            joined[-1][1] = fb
+        else:
+            joined.append([fa, fb])
+    out: List[KeepRange] = []
+    tl = 0
+    for fa, fb in joined:
+        out.append(KeepRange(fa / fps, fb / fps, tl / fps))
+        tl += fb - fa
+    return out
+
+
 class TimeMap:
-    """Maps source time <-> edited timeline time through a list of keep ranges."""
+    """Maps source time <-> edited timeline time through a list of keep ranges (in timeline
+    order). With a cold open a source moment can appear twice; to_timeline() then returns the
+    later, in-context place and spans() returns every place."""
 
     def __init__(self, keeps: Sequence[KeepRange]):
         self.keeps = list(keeps)
-        self._src_starts = [k.src_start for k in self.keeps]
         self._tl_starts = [k.tl_start for k in self.keeps]
+        self.runs = [(r, [k.src_start for k in r]) for r in source_runs(self.keeps)]
 
     @property
     def edited_duration(self) -> float:
         return self.keeps[-1].tl_end if self.keeps else 0.0
 
-    def to_timeline(self, t: float) -> float:
-        """Source time -> timeline time. Times inside a cut snap to the cut point."""
-        if not self.keeps:
-            return 0.0
-        i = bisect.bisect_right(self._src_starts, t) - 1
+    @staticmethod
+    def _in_run(run, starts, t: float) -> float:
+        """Source time -> timeline time within one run. Times inside a cut snap to the cut point."""
+        i = bisect.bisect_right(starts, t) - 1
         if i < 0:
-            return 0.0
-        k = self.keeps[i]
+            return run[0].tl_start
+        k = run[i]
         if t <= k.src_end:
             return k.tl_start + (t - k.src_start)
         return k.tl_end  # inside the cut after range i
+
+    def to_timeline(self, t: float) -> float:
+        """Source time -> timeline time: the last run that keeps t, else the main (last) run."""
+        if not self.keeps:
+            return 0.0
+        for run, starts in reversed(self.runs):
+            i = bisect.bisect_right(starts, t) - 1
+            if i >= 0 and t <= run[i].src_end:
+                return self._in_run(run, starts, t)
+        return self._in_run(*self.runs[-1], t)
+
+    def spans(self, a: float, b: float) -> List[Interval]:
+        """Every timeline span that plays source [a, b], in timeline order (empty ones left out)."""
+        out = []
+        for run, starts in self.runs:
+            if b <= run[0].src_start or a >= run[-1].src_end:
+                continue
+            x, y = self._in_run(run, starts, a), self._in_run(run, starts, b)
+            if y > x:
+                out.append((x, y))
+        return out
 
     def to_source(self, tl: float) -> float:
         i = bisect.bisect_right(self._tl_starts, tl) - 1
@@ -207,21 +277,25 @@ def plan(vad: Sequence[Interval], words: Sequence[dict], duration: float, s: Cut
     return speech, cuts, keeps
 
 
-def stats(keeps: Sequence[KeepRange], duration: float) -> dict:
+def stats(keeps: Sequence[KeepRange], duration: float, fps: int = 30) -> dict:
+    """Keeps end on the 1/fps grid, so the source's last partial frame is never used; it is not a cut."""
+    end = int(duration * fps + 1e-6) / fps
     edited = keeps[-1].tl_end if keeps else 0.0
+    kept = merge_intervals((k.src_start, k.src_end) for k in keeps)  # source used (a hook may repeat)
     removed = []
     prev_end = 0.0
-    for k in keeps:
-        if k.src_start > prev_end + 1e-9:
-            removed.append(k.src_start - prev_end)
-        prev_end = k.src_end
-    if duration - prev_end > 1e-3:
-        removed.append(duration - prev_end)
+    for a, b in kept:
+        if a > prev_end + 1e-9:
+            removed.append(a - prev_end)
+        prev_end = b
+    if end - prev_end > 1e-3:
+        removed.append(end - prev_end)
+    gone = max(0.0, end - sum(b - a for a, b in kept))
     return {
         "source_duration": round(duration, 3),
         "edited_duration": round(edited, 3),
-        "removed_seconds": round(duration - edited, 3),
-        "removed_percent": round(100.0 * (duration - edited) / duration, 1) if duration else 0.0,
+        "removed_seconds": round(gone, 3),
+        "removed_percent": round(100.0 * gone / duration, 1) if duration else 0.0,
         "num_cuts": len(removed),
         "longest_cut": round(max(removed), 3) if removed else 0.0,
         "num_segments": len(keeps),

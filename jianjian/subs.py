@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, replace
 from typing import List, Optional, Sequence
 
 from .cuts import TimeMap
@@ -197,11 +197,13 @@ def build_cues(words: Sequence[dict], cs: CueSettings = CueSettings()) -> List[C
 def remap(cues: Sequence[Cue], tmap: TimeMap, min_dur: float = 0.3) -> List[Cue]:
     out: List[Cue] = []
     for c in cues:
-        a, b = tmap.to_timeline(c.start), tmap.to_timeline(c.end)
-        if b - a < 0.05:
-            continue
-        c.tl_start, c.tl_end = a, b
-        out.append(c)
+        # a line inside a cold-open hook (--hook) plays twice in teaser mode: once per place
+        places = [(a, b) for a, b in tmap.spans(c.start, c.end) if b - a >= 0.05]
+        for n, (a, b) in enumerate(places):
+            d = c if n == 0 else replace(c)
+            d.tl_start, d.tl_end = a, b
+            out.append(d)
+    out.sort(key=lambda c: c.tl_start)
     # resolve tiny overlaps created by snapping, enforce min duration where room allows
     for i, c in enumerate(out):
         nxt = out[i + 1].tl_start if i + 1 < len(out) else c.tl_end + 10

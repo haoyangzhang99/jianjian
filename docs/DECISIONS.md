@@ -56,11 +56,21 @@ were tried and failed.
   by 30 s. It comes from creator advice on short-video feeds, which rank on completion, engagement
   and share rate, so the opening decides retention. Agents suggest it for these platforms and
   build the deliverable to it (skill/SKILL.md §0b).
-- **Done with content cuts, not a new feature.** Preamble and warm-up are removed as reviewed
+- **Preamble is removed with content cuts.** Preamble and warm-up are removed as reviewed
   `restart` spans in `fillers.json`, which already cut cleanly and keep subtitles in sync.
-  jianjian never reorders clips (keep ranges are in source order), so a hook that sits later in
-  the recording has to be moved in Jianying or re-recorded. The agent says so instead of claiming
-  the structure is met.
+- **A later hook is brought forward with a cold open (`--hook START-END`).** The keep list is then
+  no longer in source order: the hook's keep ranges (pauses and fillers inside it stay cut,
+  bounds on the frame grid) come first, then the whole edit. The default repeats the hook at its
+  original place (a teaser, the usual cold open; the user chose this default); `--hook-mode move`
+  removes it there. Every stage reads the same reordered list, split into source-ordered runs
+  (`cuts.source_runs`): the draft and the checks already worked clip by clip; the subtitle and
+  card mapping (`TimeMap`) maps a line into every run that plays it, so a teaser line appears
+  twice; the audio is streamed once per run; and FFmpeg gets one input per run, joined with
+  `concat`. A single `select` keeps frames in source order and can't jump back, and a `split`
+  of one input into several `select` branches has to hold back the main branch's raw frames
+  while the hook plays, up to the hook's position in the source. Each later input
+  opens with a fast seek 2 s before its run, and its timestamps are shifted back so the frame
+  grid and the `select` times stay in source time.
 
 ## Filler words (`--cut-fillers`)
 
