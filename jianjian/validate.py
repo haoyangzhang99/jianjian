@@ -14,14 +14,16 @@ SR = 16000
 
 
 def check_draft(draft_dir: str, keeps: Sequence[KeepRange], fps: int, media_path: str,
-                local_media: str = "", speed: float = 1.0, insert_paths: Sequence[str] = ()) -> dict:
-    """insert_paths: the converted clips (--insert) the draft may also use, as Jianying sees them."""
+                local_media: str = "", speed: float = 1.0, insert_paths: Sequence[str] = (),
+                animations: Sequence[str] = ()) -> dict:
+    """insert_paths: the converted clips (--insert) the draft may also use, as Jianying sees them.
+    animations: the paths of the animation clips the draft should use, in timeline order."""
     s = summarize_draft(draft_dir)
     problems: List[str] = []
     expected_us = int(round(round(keeps[-1].tl_end * fps) * 1_000_000 / fps / speed)) if keeps else 0
     if abs((s["duration_us"] or 0) - expected_us) > 1_000_000 / fps:
         problems.append(f"draft duration {s['duration_us']} != expected {expected_us}")
-    vtracks = [t for t in s["tracks"] if t["type"] == "video"]
+    vtracks = [t for t in s["tracks"] if t["type"] == "video" and t["name"] != "animations"]
     if len(vtracks) != 1:
         problems.append(f"expected 1 video track, found {len(vtracks)}")
     else:
@@ -40,8 +42,12 @@ def check_draft(draft_dir: str, keeps: Sequence[KeepRange], fps: int, media_path
                 problems.append(f"video segment {i} source start {ss / 1e6:.3f}s != {keeps[i].src_start:.3f}s")
                 break
             pos = st + du
+    atrack = [t for t in s["tracks"] if t["type"] == "video" and t["name"] == "animations"]
+    if len(atrack) != (1 if animations else 0) or (atrack and atrack[0]["segments"] != len(animations)):
+        problems.append(f"expected {len(animations)} animations on an animations track, found "
+                        f"{atrack[0]['segments'] if atrack else 0}")
     for t in s["tracks"]:
-        if t["type"] == "text":
+        if t["type"] == "text" or t["name"] == "animations":
             prev_end = -1
             for st, du, *_ in t["spans"]:
                 if st < prev_end:
@@ -52,6 +58,10 @@ def check_draft(draft_dir: str, keeps: Sequence[KeepRange], fps: int, media_path
                     break
                 prev_end = st + du
     for m in s["video_materials"]:
+        if m["path"] in animations:
+            if not os.path.exists(m["path"]):
+                problems.append(f"animation file missing: {m['path']}")
+            continue
         if m["path"] != media_path and m["path"] not in insert_paths:
             problems.append(f"material path {m['path']} is not the recording or an inserted clip")
         local = (local_media or m["path"]) if m["path"] == media_path else m["path"]

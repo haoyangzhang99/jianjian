@@ -115,9 +115,12 @@ def _subtitle_segment(jy, lines, timerange):
 def build_draft(staging_root: str, name: str, info: MediaInfo, media_path: str,
                 keeps: Sequence[KeepRange], cues: Sequence[Cue], fps: int,
                 final_root: str, tracks=("zh", "en"), cards: Sequence[dict] = (), speed: float = 1.0,
-                inserts: Sequence[Tuple[str, MediaInfo]] = ()) -> str:
+                inserts: Sequence[Tuple[str, MediaInfo]] = (),
+                animations: Sequence[Tuple[str, MediaInfo, int, int]] = ()) -> str:
     """Build the draft in staging_root/name. media_path is the absolute path Jianying will use;
-    inserts are (path for Jianying, MediaInfo) of the clips keep ranges with media 1, 2, ... play."""
+    inserts are (path for Jianying, MediaInfo) of the clips keep ranges with media 1, 2, ... play.
+    animations: (path for Jianying, MediaInfo, first and end frame on the final timeline) of the
+    rendered transparent clips; they go on a video track above the recording."""
     jy = _import_pyjy()
     os.makedirs(staging_root, exist_ok=True)
     folder = jy.DraftFolder(staging_root)
@@ -125,6 +128,8 @@ def build_draft(staging_root: str, name: str, info: MediaInfo, media_path: str,
     draft_dir = os.path.join(staging_root, name)
 
     specs = [jy.TrackSpec(jy.TrackType.video, "main")]
+    if animations:  # later tracks draw on top: above the recording, under the subtitles
+        specs.append(jy.TrackSpec(jy.TrackType.video, "animations"))
     names = {"zh": "字幕-中文", "en": "subtitles-en"}
     tracks = [t for t in tracks if any((c.zh if t == "zh" else c.en) for c in cues)]
     if tracks:
@@ -158,6 +163,12 @@ def build_draft(staging_root: str, name: str, info: MediaInfo, media_path: str,
         script.add_segment(seg, "main")
         tl_f += n
     total_us = tus(tl_f)
+    for path, ainfo, f0, f1 in animations:
+        am = _video_material(jy, ainfo, path)
+        script.add_material(am)
+        a, b = us(f0), min(us(f1), total_us, us(f0) + am.duration)
+        script.add_segment(jy.VideoSegment(am, jy.Timerange(a, b - a), source_timerange=jy.Timerange(0, b - a)),
+                           "animations")
 
     # Both languages share one text box per cue (first language on top, larger), each line with its
     # own size and colour. Two tracks pinned at fixed heights overlapped whenever a line wrapped,

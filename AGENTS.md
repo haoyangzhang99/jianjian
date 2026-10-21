@@ -14,5 +14,6 @@ This folder is a local podcast-editing pipeline for Jianying Pro. The full usage
 - Personal notes (episodes, names, paths) go in STATUS.md (git-ignored), never in tracked files.
 - Every mistake or pitfall you hit goes into README.md → "Pitfalls" in the same change: what went
   wrong, why, and what to do (no personal details).
-- Code: `jianjian/` (cli, asr, cuts, fillers, subs, translate, draft, render, validate, cards);
+- Code: `jianjian/` (cli, asr, cuts, fillers, subs, translate, draft, render, validate, cards,
+  animations);
   `vendor/pyJianYingDraft` is upstream pyJianYingDraft (Apache-2.0, commit in UPSTREAM_COMMIT).

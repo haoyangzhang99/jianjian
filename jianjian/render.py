@@ -119,8 +119,10 @@ def render(src: str, out_path: str, keeps: Sequence[KeepRange], info: MediaInfo,
            fps: int = 30, ass_path: Optional[str] = None, srt_tracks: Sequence[tuple] = (),
            video_bitrate: str = "8M", crf: int = 20, encoder: str = "auto",
            duration_limit: Optional[float] = None, speed: float = 1.0,
-           inserts: Sequence[Tuple[str, MediaInfo]] = ()) -> dict:
-    """inserts: (path, MediaInfo) of the clips that keep ranges with media 1, 2, ... play."""
+           inserts: Sequence[Tuple[str, MediaInfo]] = (),
+           animations: Sequence[Tuple[str, float]] = ()) -> dict:
+    """inserts: (path, MediaInfo) of the clips that keep ranges with media 1, 2, ... play.
+    animations: (transparent clip, start in seconds on the final timeline), overlaid under the subtitles."""
     if AUDIO_SR % fps:
         raise ValueError(f"fps {fps} must divide {AUDIO_SR} (use 24, 25, 30, 48, 50 or 60)")
     work = os.path.dirname(os.path.abspath(out_path))
@@ -145,6 +147,10 @@ def render(src: str, out_path: str, keeps: Sequence[KeepRange], info: MediaInfo,
     wav_in = len(runs)
     if speed != 1.0:  # speed the whole edit up uniformly (subtitle times are already scaled)
         vchain += f",setpts=PTS/{speed},fps={fps}"
+    first_anim = wav_in + 1 + len(srt_tracks)  # animation clips are the last inputs
+    for i, (_p, start) in enumerate(animations):
+        vchain += (f"[b{i}];\n[{first_anim + i}:v]setpts=PTS-STARTPTS+{start:.6f}/TB[o{i}];\n"
+                   f"[b{i}][o{i}]overlay=eof_action=pass:format=auto")
     burn = bool(ass_path) and caps.get("libass")
     if burn:
         vchain += f",subtitles=filename='{os.path.basename(ass_path)}'"
@@ -171,6 +177,8 @@ def render(src: str, out_path: str, keeps: Sequence[KeepRange], info: MediaInfo,
     fc_flag = ["-/filter_complex", script] if caps.get("major", 0) >= 7 else ["-filter_complex_script", script]
     cmd = [caps["path"], "-hide_banner", "-loglevel", "error", "-stats", "-y"] + inputs + ["-i", wav]
     for p, _lang in srt_tracks:
+        cmd += ["-i", p]
+    for p, _start in animations:
         cmd += ["-i", p]
     cmd += fc_flag + ["-map", "[v]", "-map", "[a]" if speed != 1.0 else f"{wav_in}:a"]
     for i, (_p, lang) in enumerate(srt_tracks):
