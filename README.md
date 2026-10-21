@@ -209,6 +209,92 @@ conversation recorded on a video call. A full run (transcribe, translate, draft,
 
 | Problem | Fix |
 |---|---|
+## Pitfalls
+
+Every mistake found while building and using jianjian is written down here: what went wrong, why,
+and what to do. [docs/DECISIONS.md](docs/DECISIONS.md) has the longer story behind each design
+choice. **Add new pitfalls here as you find them.**
+
+**Jianying**
+
+- **Never update a draft in place; always add a new one.** Jianying encrypts `draft_info.json` only
+  when it *saves*. A draft that is open in Jianying, or was opened without saving, still looks like
+  untouched plain JSON — and Jianying later saves its in-memory copy over any change made on disk.
+  "Still plain JSON" does not mean "never opened". (Signs it was opened: a `Timelines/` folder or a
+  `.locked` file in the draft folder.)
+- **Drafts point to media by absolute path.** Moving or renaming the source video (or an export
+  left in Downloads) turns the clips "offline". Copy files to a stable folder before building a
+  draft on them.
+- **Two separate subtitle tracks overlapped** whenever a line wrapped: Jianying grows a text box up
+  and down from its centre. Use one text box per subtitle with a style range per language.
+- **Cut parts are hidden, not deleted.** Each clip plays a range of the original file, so the
+  playhead jumps at every cut and a clip's edge can be dragged out to bring removed audio back.
+  This is expected, not a bug.
+- **Jianying exports 44.1 kHz stereo, about 3 dB quieter than a mono source.** Don't read that as
+  an editing choice when comparing someone's export with jianjian's output.
+- **A name clash renamed the staging draft even with `--no-install`,** so a manual copy picked up a
+  stale folder. Fixed; always verify the installed draft, not just the copy step.
+
+**Transcription**
+
+- **`initial_prompt` only reaches the first 30-s window** (with `condition_on_previous_text=False`);
+  after that, transcripts lost punctuation. Send the style prompt as `hotwords`.
+- **Names or term lists in the prompt leak into the transcript** and can start a repetition loop
+  that swallows real speech. Fix names during review instead.
+- **PyAV 19 breaks faster-whisper 1.2.1** (`metadata_errors=` was removed). Keep `av<17`.
+- **Whisper drops "uh/um" and mistimes the ones it keeps** (often 0.1–0.5 s off). Use a verbatim
+  pass to find fillers and locate each one on the waveform before cutting.
+- **Re-transcriptions misspell names** (e.g. a surname heard as a different word). Never match
+  lines between two transcriptions by exact words; match by position and fuzzy similarity.
+
+**Cutting**
+
+- **Cuts can land inside audible sound (open issue).** The speech detector misses soft sounds
+  (trailing syllables, breaths, short interjections), and a filler cut can nick the neighbouring
+  word, so some words sound cut off. Listen to the edit before publishing; the planned fix is to
+  move every cut edge to the nearest quiet point.
+- **Checking "no word was cut" by word midpoints misses clipped word edges.** Check the audio
+  level at each cut edge too.
+- **A hard pause threshold is uneven:** a pause just under the threshold stays longer than a long
+  pause that was shortened. Use a preset that fits the content, or exact values.
+- **`--no-cut` reported "removed 1 pauses/fillers, 0.016s" and a "custom" preset.** Keep ranges
+  end on the frame grid, so the source's last partial frame (a few ms) is never used, and the
+  stats counted that sliver as a cut. Measure removed time against the frame-grid end, not the raw
+  duration, and report `--no-cut` as "no cuts" instead of falling back to the default pause values.
+
+**Subtitles and translation**
+
+- **Translating several lines per request let the model shift text into the neighbouring line.**
+  Translate one sentence at a time and split it back over its lines.
+- **Subtitle text must follow the final edit, not an earlier one.** When someone edits the video
+  further (e.g. in Jianying), rebuild each line's text from the edited video's own audio. Patching
+  the old text fails: a stutter copy that is already shown once gets deleted again, and a cut that
+  spans several lines is missed.
+- **Placing old subtitle lines on a new edit by matching words leaves gaps** when words are
+  misheard. Give every spoken word to exactly one line and close any gap by position.
+- **Stretching a subtitle over a leftover word without changing its text** shows text that
+  doesn't match the speech. Put the word into the line's text, or move the line boundary.
+- **A transcript can silently skip a sentence.** Transcribing a whole long file once heard a full
+  sentence as "Mm-hmm", so the sentence looked cut and its subtitle was dropped, and the coverage
+  check (built on the same transcript) missed it too. Never treat "not in the transcript" as "cut"
+  without checking the audio, and check subtitle coverage against the audio itself (speech
+  detection), not against the transcript the subtitles came from.
+- **Subtitles leave out "uh/um", stutters and filler "you know / like / so"** on purpose. Keep the
+  meaningful uses ("I like this", "fruit like apples").
+
+**Render and checks**
+
+- **Homebrew's ffmpeg 8+ has no libass,** so subtitles couldn't be burned in. Prefer an ffmpeg
+  with libass (imageio-ffmpeg's build has it).
+- **Rounding each cut to 16 kHz on its own drifts a few samples per cut** and caused false sync
+  failures. Build the reference audio sample-exact.
+- **Sped-up audio can't be compared by waveform** (atempo output differs between sample rates);
+  compare loudness envelopes.
+
+**Models**
+
+- **Qwen2.5-3B is not open source** ("qwen-research" license). The low-RAM fallback is Qwen2.5-1.5B.
+
 | `jianjian is not set up yet` | `bash setup.sh` |
 | `jianjian: command not found` | Add `~/.local/bin` to your PATH, or run `bin/jianjian` from the repo |
 | Draft doesn't appear in Jianying | Go back to the Jianying home page or restart Jianying, then check `report.md` → "Installed at" |
