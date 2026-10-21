@@ -249,12 +249,40 @@ choice. **Add new pitfalls here as you find them.**
 
 **Cutting**
 
-- **Cuts can land inside audible sound (open issue).** The speech detector misses soft sounds
-  (trailing syllables, breaths, short interjections), and a filler cut can nick the neighbouring
-  word, so some words sound cut off. Listen to the edit before publishing; the planned fix is to
-  move every cut edge to the nearest quiet point.
+- **Cuts landed inside audible sound.** The speech detector misses soft sounds (trailing
+  syllables, breaths, short interjections), and a filler cut can nick the neighbouring word, so
+  words sounded cut off. Now every cut edge is checked against the audio and moved to a quiet point
+  (`jianjian/edges.py`); `report.md` lists how many edges still sit in sound. Listen to those.
+- **Only the side that stays has to be quiet.** Requiring quiet on both sides of a cut edge dropped
+  most filler cuts, because the removed side is the "uh" itself. Check the kept audio next to the
+  edge.
+- **Video-call recordings contain digital silence.** Call apps mute the line between words (exact
+  zeros, about 5% of one test recording). A noise floor estimated with those frames sat at -120 dB,
+  so every ordinary pause looked loud. Ignore digital silence, and compare against the speech level
+  as well as the room tone.
+- **Fillers glued to words have no quiet point,** only a narrow valley (often under 40 ms). Measure
+  loudness at the exact cut frame, not the loudest frame nearby, or the valley is never found.
+  Leaving glued fillers in was tried and rejected in a listening test (the stutters bothered more
+  than the valley cuts, which didn't sound clipped), so they are cut at the valley.
+- **A filler cut's edges must stay near the filler, and only move inward.** Letting them slide
+  anywhere inside the cut found a quiet point *before* the filler (so it wasn't cut at all) or the
+  dip *inside* a stutter like "have you" (so half of it stayed); letting them move 70 ms *outward*
+  clipped the end of the neighbouring word ("because" -> "becau-"). Search only within 70 ms
+  inside each boundary.
+- **"30 dB below the speech" is not quiet.** A soft tail after a word (a fading syllable or a
+  breath) 35-40 dB below the speech is still heard when a cut stops it abruptly, and a listener
+  heard it as the word being cut off. Pause cuts now start and end only where the audio is 45 dB
+  below the speech.
+- **Metrics are not the ear.** "Cut edges in audible sound" dropped by a third, yet in a listening
+  test the moved edges didn't sound better; the change that mattered was cutting the stutters. Let
+  the listener decide between versions, and judge filler removal by the share of the filler's
+  sound that is cut, not its time span.
 - **Checking "no word was cut" by word midpoints misses clipped word edges.** Check the audio
-  level at each cut edge too.
+  level at each cut edge too, and treat transcript timings for short words ("I", "and") with
+  caution: they are often 50 ms off, so a word-edge overlap test flags cuts that are fine.
+- **A broken measurement overstates the problem.** The first count of "cuts in audible sound"
+  (200 of 227) used the digital-silence noise floor above; the corrected count was 153. Re-check a
+  metric whenever its definition changes.
 - **A hard pause threshold is uneven:** a pause just under the threshold stays longer than a long
   pause that was shortened. Use a preset that fits the content, or exact values.
 - **`--no-cut` reported "removed 1 pauses/fillers, 0.016s" and a "custom" preset.** Keep ranges

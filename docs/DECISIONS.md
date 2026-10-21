@@ -41,6 +41,14 @@ were tried and failed.
 
 ## Pauses and cuts
 
+- **Every cut edge is checked against the audio** (`jianjian/edges.py`), because neither the
+  speech detector nor Whisper marks where sound really stops. Only the kept side of an edge has to
+  be quiet: 45 dB below the speech level for pause cuts (30 dB still let a listener hear a soft tail
+  being chopped). Filler cuts move their edges at most 70 ms inward and fall back to the valley
+  between filler and word; they are never dropped, since leaving glued fillers in bothered the
+  listener more. Loudness ignores digital silence (video-call apps mute the line between words).
+  Every cut gets a 15-ms fade. Tuned by listening tests on a 15-minute recording: the final
+  version is 12 s longer than before and keeps the cut-off tails.
 - **Cuts are snapped to the frame grid** (1/fps), and the draft, the render and the subtitles all
   use the same keep ranges, so nothing drifts over hundreds of cuts.
 - **Presets come from common tools.** Mubert Cast defaults to pauses over 0.5 s shortened to 0.3 s;

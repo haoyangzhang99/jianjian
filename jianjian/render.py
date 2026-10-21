@@ -27,7 +27,7 @@ def _select_expr(keeps: Sequence[KeepRange], fps: int) -> str:
 
 
 def build_audio(src: str, keeps: Sequence[KeepRange], out_wav: str, audio_start: float = 0.0,
-                fade_ms: float = 6.0) -> float:
+                fade_ms: float = 15.0) -> float:
     """Write the edited audio (keep ranges joined, short fade at every join) as 16-bit WAV.
     Streams the source, so memory stays small even for a 2-hour episode. Keep ranges may jump back
     in the source (a cold open): each source-ordered run is streamed on its own. Returns seconds."""

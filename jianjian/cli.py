@@ -181,6 +181,19 @@ def cmd_edit(a) -> int:
     else:
         log(f"pause preset: {preset} (pauses > {cs.max_pause}s -> {cs.keep_pause}s)")
         speech, cuts, keeps = plan(vad, protect, info.duration, cs, fill_spans)
+        # keep every cut out of audible sound: edges move to quiet points (see edges.py)
+        from .edges import Loudness, edges_in_sound, refine_cuts
+        loud = Loudness(audio)
+        before = edges_in_sound(cuts, loud)
+        cuts, est = refine_cuts(cuts, fill_spans, loud, a.fps)
+        keeps = keep_ranges_from_cuts(cuts, info.duration, a.fps)
+        est.update(edges_in_sound_before=before, edges_in_sound=edges_in_sound(cuts, loud))
+        log(f"cut edges: {est['edges_in_sound_before']} of {2 * est['cuts']} were in audible sound -> "
+            f"{est['edges_in_sound']} now; {est['moved']} cuts moved to quiet edges, {est['split']} split "
+            f"around a sound, {est['valley']} glued fillers cut at a valley, {est['dropped']} dropped "
+            f"(no quiet point: pause kept, or a glued filler left in)")
+        if est["edges_in_sound"]:
+            log(f"WARNING: {est['edges_in_sound']} cut edges still sit in audible sound; listen to those cuts")
     if a.hook:
         # cold open: the hook spans play first, then the edit from the start (cuts.apply_hooks)
         opener = sum(max(0.0, min(k.src_end, h1) - max(k.src_start, h0)) for h0, h1 in a.hook for k in keeps)
@@ -205,6 +218,8 @@ def cmd_edit(a) -> int:
     log(f"cuts: removed {st['num_cuts']} pauses/fillers, {st['removed_seconds']:.1f}s "
         f"({st['removed_percent']}%), {fmt_dur(st['source_duration'])} -> {fmt_dur(st['edited_duration'])}")
     report["cuts"] = {"preset": preset, "settings": cs.to_dict(), **st}
+    if not a.no_cut:
+        report["cuts"]["edges"] = est
     tmap = TimeMap(keeps)
 
     # 4. cues (+ reuse translations from a previous run of the same transcript)
@@ -357,6 +372,11 @@ def _write_report_md(path: str, r: dict) -> None:
              f"model={r.get('transcript', {}).get('model')}, words={r.get('transcript', {}).get('words')}",
              f"- Subtitles: {r.get('subtitles', {}).get('lines')} lines "
              f"(zh {r.get('subtitles', {}).get('zh')}, en {r.get('subtitles', {}).get('en')})"]
+    e = c.get("edges")
+    if e:
+        lines.append(f"- Cut edges in audible sound: {e['edges_in_sound']} (before moving them to quiet points: "
+                     f"{e['edges_in_sound_before']}); {e['moved']} cuts moved, {e['split']} split around a sound, "
+                     f"{e['dropped']} dropped (pause kept or glued filler left in)")
     h = r.get("hook")
     if h:
         lines.append(f"- Cold open: {', '.join(f'{x:.2f}-{y:.2f}s' for x, y in h['spans'])} plays first "

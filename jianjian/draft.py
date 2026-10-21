@@ -71,7 +71,7 @@ LINE_STYLES = {  # per-language line style inside a subtitle box
     "en": dict(size=5.0, color=(0.9, 0.9, 0.9)),
 }
 SUBTITLE_Y = -0.74  # centre of the subtitle box (-1 = bottom edge of the frame)
-FADE_US = 10_000    # audio fade at every cut, in microseconds
+FADE_US = 15_000    # audio fade at every cut, in microseconds
 
 
 def _subtitle_segment(jy, lines, timerange):

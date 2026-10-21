@@ -57,10 +57,20 @@ def main():
     print(f"expected words not found: {len(missing)} ({100 * len(missing) / max(len(exp), 1):.1f}%)")
     in_cut = [i for i in missing if any(c0 <= (vw[i]['s'] + vw[i]['e']) / 2 <= c1 for c0, c1 in cuts)]
     print(f"  ...of which inside a removed span (really cut away): {len(in_cut)}")
+
+    def ctx(i):
+        return ("".join(w["w"] for w in vw[max(0, i - 5):i]) + " [" + vw[i]["w"].strip() + "] " +
+                "".join(w["w"] for w in vw[i + 1:i + 6])).strip()
     for i in in_cut:
-        ctx = "".join(w["w"] for w in vw[max(0, i - 5):i]) + " [" + vw[i]["w"].strip() + "] " + \
-              "".join(w["w"] for w in vw[i + 1:i + 6])
-        print(f"    {vw[i]['s']:7.2f}s  {ctx.strip()}")
+        print(f"    {vw[i]['s']:7.2f}s  {ctx(i)}")
+    # a cut can also clip just the start or end of a word that stays: the midpoint test above misses
+    # that (word timestamps are imprecise, so only overlaps over 50 ms count)
+    kept = [i for i, _ in exp]
+    clipped = [i for i in kept if any(min(c1, vw[i]["e"]) - max(c0, vw[i]["s"]) > 0.05 for c0, c1 in cuts)
+               and i not in in_cut]
+    print(f"kept words with an edge clipped by a cut (overlap > 50 ms): {len(clipped)}")
+    for i in clipped[:15]:
+        print(f"    {vw[i]['s']:7.2f}s  {ctx(i)}")
 
 
 if __name__ == "__main__":
