@@ -155,6 +155,12 @@ def cmd_edit(a) -> int:
             log(f"fillers: loaded {len(cands)} reviewed candidates from {a.fillers}")
         else:
             cands = fl.detect(vw)
+            # content-cut suggestions (preamble, logistics, restarts ...): for review, never cut here
+            from .content import suggest
+            cands += [{"words": c["words"], "kind": "content", "cut": False, "reason": c["reason"]} for c in suggest(vw)]
+            cands.sort(key=lambda c: c["words"][0])
+            for k, c in enumerate(cands):
+                c["id"] = k + 1
         write_json(os.path.join(out, "fillers.json"), fl.describe(cands, vw))
         fl.write_review_md(os.path.join(out, "fillers_review.md"), cands, vw)
         fill_spans = fl.spans(cands, vw, a.fps, audio=audio)
@@ -167,8 +173,13 @@ def cmd_edit(a) -> int:
         fsec = sum(b - a_ for a_, b in fill_spans)
         log(f"fillers: cutting {sum(kinds.values())} of {len(cands)} candidates {kinds}, {fsec:.1f}s; "
             f"review list: fillers_review.md")
+        content = [c for c in fl.describe(cands, vw) if c["kind"] == "content"]
+        if content:
+            log(f"content: {len(content)} cut suggestions for review ({sum(c['end'] - c['start'] for c in content):.0f}s; "
+                f"{sum(1 for c in content if c['cut'])} approved), see fillers_review.md")
         report["fillers"] = {"candidates": len(cands), "cut": kinds, "seconds": round(fsec, 1),
-                             "reviewed": bool(a.fillers)}
+                             "reviewed": bool(a.fillers),
+                             "content_suggested": len(content), "content_cut": sum(1 for c in content if c["cut"])}
 
     # 4. cut plan
     mp, kp, _ = PRESETS.get(a.preset, (None, None, ""))
@@ -221,6 +232,11 @@ def cmd_edit(a) -> int:
     if not a.no_cut:
         report["cuts"]["edges"] = est
     tmap = TimeMap(keeps)
+    # B-roll: places where a speaker asks for something to be shown ("put the clip here")
+    from .content import broll_markers
+    report["broll"] = [{**m, "edit_time": round(tmap.to_timeline(m["start"]) / a.speed, 2)} for m in broll_markers(tr["words"])]
+    for m in report["broll"]:
+        log(f"B-roll: insert point at {fmt_dur(m['edit_time'])} in the edit: {m['text'][:70]!r}")
 
     # 4. cues (+ reuse translations from a previous run of the same transcript)
     cues_path = os.path.join(out, "cues.json")
@@ -386,6 +402,11 @@ def _write_report_md(path: str, r: dict) -> None:
         lines.append(f"- Filler words: cut {sum(fz['cut'].values())} of {fz['candidates']} candidates "
                      f"{fz['cut']}, {fz['seconds']}s ({'reviewed' if fz['reviewed'] else 'automatic only'}; "
                      f"see fillers_review.md)")
+    if fz and fz.get("content_suggested"):
+        lines.append(f"- Content cuts: {fz['content_suggested']} suggested, {fz['content_cut']} approved "
+                     f"(see fillers_review.md)")
+    for m in r.get("broll", []):
+        lines.append(f"- B-roll insert point at {fmt_dur(m['edit_time'])} in the edit: \"{m['text']}\"")
     t = r.get("translation")
     if t:
         lines.append(f"- Translation: {json.dumps(t, ensure_ascii=False)}")

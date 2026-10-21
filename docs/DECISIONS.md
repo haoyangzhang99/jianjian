@@ -98,6 +98,18 @@ were tried and failed.
   English subtitle text; reviewed translations that may now say too much are flagged.
 - `tools/verify_words.py` re-transcribes an edit and reports real words cut and fillers left.
 
+## Content cuts and B-roll
+
+- **Content cuts are suggested, never automatic.** A comparison with a person's own edit of a
+  15-minute recording showed they removed about 94 s of content (preamble, logistics, word
+  searches, back-and-forth, restarts, an unfinished ending, one backstory detail). `content.py`
+  suggests these with a reason (10 of the person's 12 cuts were found; the backstory and an
+  abandoned phrase with no trace in the words were not), in fillers.json with `cut: false`, because
+  they are editorial judgement and the detectors have false positives (lists, plain repetition).
+- **Stutters across a filler** ("they, uh, they") are cut like adjacent ones; word restarts
+  ("re-, re-, uh, remember") are only suggested ("the, there" can be two words).
+- **B-roll markers** flag requests to show something ("put the clip here") in `report.md`.
+
 ## Subtitles and translation
 
 - **Cue splitting:** an English "." ends a cue (except abbreviations like "U.S."); English cues may

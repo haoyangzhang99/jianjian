@@ -110,7 +110,15 @@ listed. Read `<out>/fillers_review.md` (each candidate in context), then edit `<
   meaning ("I **like** this song", "**so** important", "I don't think **so**", "fruit **like** apples");
 - set `"cut": false` on a "repeat" that is really two speakers or emphasis;
 - add restarts: `{"words": [i, j], "kind": "restart", "cut": true}` (indices into
-  `work/transcript_verbatim.json`).
+  `work/transcript_verbatim.json`);
+- content suggestions (kind "content", with a reason: preamble before the greeting, talk about the
+  recording, logistics, word search, back-and-forth, restart, unfinished ending) are never cut until
+  approved. Show the user the list (time, reason, text) and ask before setting `"cut": true`. If
+  `editing-style.local.md` exists, propose the kinds the user usually cuts. Reject false restarts:
+  lists ("a red shirt or a red hat") and plain repetition ("talking about it"). Each
+  approved passage also leaves the subtitles; recheck the Chinese of the lines listed as CHECK;
+- B-roll: `report.md` lists insert points where a speaker asks for something to be shown ("put the
+  clip here"), with their time in the edit. Tell the user; jianjian can't source the footage.
 Rerun with `--fillers <out>/fillers.json` (fast: both transcripts are cached). Optionally check with
 `.venv/bin/python tools/verify_words.py <out>`: "inside a removed span" must be 0.
 

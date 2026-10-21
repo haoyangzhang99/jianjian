@@ -56,6 +56,31 @@ def detect(words: Sequence[dict]) -> List[dict]:
             if words[i + size]["s"] - words[i + size - 1]["e"] > 1.0:
                 continue  # a long pause between the copies: probably deliberate
             add(i, i + size - 1, "repeat", True)
+    # stutters with a hesitation between the copies ("they, uh, they", "the, um, the"): compare the
+    # words with uh/um left out; the uh between them is already a hesitation candidate
+    idx = [k for k in range(n) if toks[k] and toks[k] not in HESITATIONS]
+    ft = [toks[k] for k in idx]
+    for size in (3, 2, 1):
+        for p in range(len(ft) - 2 * size + 1):
+            first, second = idx[p:p + size], idx[p + size:p + 2 * size]
+            if ft[p:p + size] != ft[p + size:p + 2 * size] or second[0] == first[-1] + 1:
+                continue  # different words, or adjacent copies (handled above)
+            if any(taken[k] for k in first + second):
+                continue
+            if size == 1 and (ft[p] in INTENSIFIERS or ft[p] not in FUNCTION_WORDS):
+                continue
+            if words[second[0]]["s"] - words[first[-1]]["e"] > 1.5:
+                continue
+            add(first[0], first[-1], "repeat", True)
+    # word restarts: a word cut short and said again in full ("re-, re-, uh, remember"); a judgement
+    # call ("the, there" can be two words), so suggested for review
+    for p in range(len(ft) - 1):
+        a, q = ft[p], p + 1
+        while q < len(ft) and ft[q] == a:
+            q += 1
+        if q < len(ft) and len(a) >= 3 and len(ft[q]) >= len(a) + 2 and ft[q].startswith(a) \
+                and not any(taken[k] for k in idx[p:q]) and words[idx[q]]["s"] - words[idx[q - 1]]["e"] <= 1.5:
+            add(idx[p], idx[q - 1], "restart", False)
     for i in range(n):
         for pat in DISCOURSE:
             j = i + len(pat) - 1
@@ -87,8 +112,11 @@ def load_review(data: Sequence[dict], words: Sequence[dict]) -> List[dict]:
     for c in data:
         i, j = int(c["words"][0]), int(c["words"][1])
         if 0 <= i <= j < len(words):
-            out.append({"id": c.get("id", len(out) + 1), "words": [i, j],
-                        "kind": c.get("kind", "restart"), "cut": bool(c.get("cut"))})
+            item = {"id": c.get("id", len(out) + 1), "words": [i, j],
+                    "kind": c.get("kind", "restart"), "cut": bool(c.get("cut"))}
+            if c.get("reason"):
+                item["reason"] = c["reason"]
+            out.append(item)
     return out
 
 
@@ -237,7 +265,27 @@ def strip_from_cues(cues, cands: Sequence[dict], words: Sequence[dict]) -> Tuple
     for c in ordered:
         if not c["cut"] or c["kind"] == "hesitation":
             continue
-        phrase = [norm(w["w"]) for w in words[c["words"][0]:c["words"][1] + 1] if norm(w["w"])]
+        span = words[c["words"][0]:c["words"][1] + 1]
+        if c["kind"] == "content":
+            # a removed passage can cover several subtitle lines: drop the lines inside it, and strip
+            # from each line it touches the part of the passage spoken while that line is on screen
+            for q in cues:
+                if q.lang != "en" or q.end < c["start"] or q.start > c["end"]:
+                    continue
+                if q.start >= c["start"] - 0.05 and q.end <= c["end"] + 0.35:
+                    q.text = ""
+                    changed.append(q.id)
+                    continue
+                part = [norm(w["w"]) for w in span if q.start - 0.05 <= (w["s"] + w["e"]) / 2 <= q.end + 0.05
+                        and norm(w["w"]) and norm(w["w"]) not in HESITATIONS]
+                new = _strip_phrase(q.text, part, False, 0.0 if c["start"] <= q.start else 1.0) if part else q.text
+                if new != q.text:
+                    q.text = new
+                    changed.append(q.id)
+                    if q.translation:
+                        flag.append(q.id)
+            continue
+        phrase = [norm(w["w"]) for w in span if norm(w["w"])]
         if not phrase:
             continue
         mid = (c["start"] + c["end"]) / 2
@@ -274,12 +322,13 @@ def write_review_md(path: str, cands: Sequence[dict], words: Sequence[dict]) -> 
     cut = [c for c in d if c["cut"]]
     lines = ["# Filler words", "",
              f"{len(cut)} of {len(d)} candidates are cut. Hesitations and repeats are cut "
-             "automatically; discourse words (like / so / you know …) only when a reviewer sets "
-             '`"cut": true` in fillers.json. Rerun with `--fillers fillers.json` to apply edits.', ""]
+             "automatically; content suggestions (preamble, logistics, restarts …) and discourse "
+             'words (like / so / you know …) only when a reviewer sets `"cut": true` in '
+             "fillers.json. Rerun with `--fillers fillers.json` to apply edits.", ""]
     by_kind: Dict[str, List[dict]] = {}
     for c in d:
         by_kind.setdefault(c["kind"], []).append(c)
-    for kind in ("discourse", "restart", "repeat", "hesitation"):
+    for kind in ("content", "discourse", "restart", "repeat", "hesitation"):
         items = by_kind.get(kind, [])
         if not items:
             continue
@@ -287,6 +336,9 @@ def write_review_md(path: str, cands: Sequence[dict], words: Sequence[dict]) -> 
         for c in items:
             m, s = divmod(int(c["start"]), 60)
             shown = c["context"].replace(f"[{c['text']}]", f"~~{c['text']}~~" if c["cut"] else f"**{c['text']}**")
+            if kind == "content":
+                shown = f"*{c.get('reason', '')}* ({c['end'] - c['start']:.1f} s): " + \
+                    ("~~" + c["text"] + "~~" if c["cut"] else "**" + c["text"] + "**")
             lines.append(f"- `{c['id']}` {m}:{s:02d} {'✂️' if c['cut'] else 'keep'} — {shown}")
         lines.append("")
     with open(path, "w", encoding="utf-8") as f:

@@ -108,7 +108,7 @@ ideal for YouTube, auto-editor keeps 0.2 s each side, and Chinese 口播 guidanc
 | `--preset NAME` | **required** | Pause handling; see the presets above. There is no default because the right pace depends on the video. |
 | `--max-pause S --keep-pause S` | | Exact pause thresholds instead of a preset |
 | `--no-cut` | | Keep the full length (subtitles only) |
-| `--cut-fillers` | | Also cut uh/um and stutter repeats. like / so / you know are listed in `fillers_review.md` for review, not cut. |
+| `--cut-fillers` | | Also cut uh/um and stutter repeats (also "they, uh, they"). like / so / you know, word restarts and **content-cut suggestions** (preamble, logistics, word searches, back-and-forth, restarts, an unfinished ending) are listed in `fillers_review.md` for review, not cut. `report.md` also lists **B-roll insert points** ("put the clip here"). |
 | `--fillers FILE` | | Apply a reviewed `fillers.json` (`"cut": true/false` per candidate; restarts can be added by word range) |
 | `--hook START-END` | | Cold open: play this span of the original (seconds or m:ss, e.g. `10:16.3-10:24.4`) first, then the edit from the start. Repeat for several spans. |
 | `--hook-mode teaser\|move` | teaser | `teaser`: the hook also plays again at its original place; `move`: only at the start |
@@ -133,8 +133,8 @@ people, brands), a few mishearings and roughly one mistranslated line in ten. Th
 an agent can do for you (see `skill/SKILL.md`):
 
 1. Review `cues.json`: fix `text` and `translation` in a copy, rerun with `--cues reviewed.json`.
-2. With `--cut-fillers`: review `fillers_review.md`, set `"cut"` in `fillers.json`, rerun with
-   `--fillers fillers.json`. Optionally run `.venv/bin/python tools/verify_words.py <out>` to confirm
+2. With `--cut-fillers`: review `fillers_review.md`, set `"cut"` in `fillers.json` (fillers and
+   the suggested content cuts), rerun with `--fillers fillers.json`. Optionally run `.venv/bin/python tools/verify_words.py <out>` to confirm
    no real words were cut.
 3. Watch the result and listen to the cuts.
 
@@ -289,6 +289,15 @@ choice. **Add new pitfalls here as you find them.**
   end on the frame grid, so the source's last partial frame (a few ms) is never used, and the
   stats counted that sliver as a cut. Measure removed time against the frame-grid end, not the raw
   duration, and report `--no-cut` as "no cuts" instead of falling back to the default pause values.
+
+- **Repeated words are not always a restart.** A restart detector that looked for a phrase said
+  twice within a few words also flagged plain repetition (sentences shaped like "it starts *at the*
+  station and ends *at the* airport") and lists (shaped like "a red shirt or a red hat"). Require
+  a break (comma, "...", dash or uh) in the abandoned part and no sentence end, and keep restarts
+  as suggestions for review.
+- **Meta words occur in normal content.** Matching "recording" or "delete this part" flagged
+  ordinary sentences and a joke about deleting a take. Match only unmistakable talk about the call
+  ("is it recording", "can you hear me", "you're muted").
 
 **Subtitles and translation**
 
