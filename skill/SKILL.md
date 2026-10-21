@@ -84,6 +84,7 @@ rank on completion, engagement and share rate, and the opening decides whether p
 | only the MP4 | `--no-draft` |
 | name the project | `--draft-name "..."` |
 | term list for translation | `--glossary terms.txt` (lines `源词 = target`) |
+| explainer animation / 演示动画 / show a diagram while I talk | `--animations animations.json` (HyperFrames pages, source time), §5b |
 
 Default output folder: next to the video, `<name>_edit/`. Never pass paths you haven't checked exist.
 
@@ -143,6 +144,45 @@ titles, people, brands), a few mishearings, and about 1 in 10 lines mistranslate
   pick a few terms a general audience wouldn't know, and write `cards.json`:
   `[{"at": <source seconds>, "duration": 6, "title": "术语", "text": "一句话解释"}]` then rerun with
   `--cards cards.json`. Keep it to a handful; cards appear top-right and are editable text in Jianying.
+
+## 5b. Explainer animations (`--animations`)
+
+Animations play over the talk while it continues (unlike `--insert`): a panel, a diagram or a list
+that builds up step by step on the words that introduce each step. Each one is an HTML page rendered
+by [HyperFrames](https://github.com/heygen-com/hyperframes) (Apache-2.0; needs Node.js 22+, runs
+locally via `npx`) to a transparent clip. It goes on an `animations` track above the recording in
+the draft (move, resize or delete it there) and is overlaid in the MP4 under the subtitles.
+
+1. Read the transcript and pick a few moments a picture would explain (a concept, a structure, a
+   list, numbers). Propose them to the user before building; keep it to a handful per episode.
+2. For each one, take word times from `<out>/work/transcript.json` (`words`: `w`, `s`, `e`, source
+   seconds): `from` = the first word of the passage, `to` = after its last word, and a beat for each
+   word that should bring in the next step.
+3. Start from `skill/animations/steps.html` (a title and steps, each on its beat). Copy it next to
+   `animations.json`, or write a new page following HyperFrames' rules (a root element with
+   `data-composition-id`, a paused GSAP timeline registered on `window.__timelines`, seekable
+   animation only, no `Math.random` / `Date.now`; `npx hyperframes docs` explains more):
+   ```json
+   [{"html": "steps.html", "from": 372.6, "to": 411.0,
+     "beats": {"red": 378.91, "white": 381.53},
+     "data": {"title": "红事 · 白事",
+              "steps": [{"text": "红事 = 婚礼", "beat": "red"}, {"text": "白事 = 葬礼", "beat": "white"}]}}]
+   ```
+   jianjian sets the page's duration and size and defines `window.jianjian` before the page's own
+   scripts: `duration`, `width`, `height`, `fps`, `beats` (seconds from the animation's start, after
+   cuts and `--speed`), `words` (`w`, `t`, `end`, same clock) and `data`. Write
+   `data-duration="auto"` where a clip should last the whole animation. Files the page uses go in an
+   `assets/` folder next to it.
+4. Keep the page's background transparent and the drawing clear of every face and of the
+   subtitles at the bottom. Look at a frame of the video first: the template's default box in the
+   top right suits one speaker filling the frame, but on a side-by-side video call it covers the
+   second speaker; use `"layout": "band"` in `data` there (a strip in the empty band above the picture). Declare every font with `@font-face`
+   (a system font: `src: local("PingFang SC")`), or HyperFrames refuses the render.
+5. Rerun with `--animations animations.json`. Rendered clips are cached in `<out>/animations/` (the
+   draft uses those files, so keep the folder); only changed pages are rendered again, into new
+   files, so older drafts keep theirs. Delete clips no draft uses any more (about 140 MB per 30 s). Check the
+   MP4 at each animation, and look at one frame before showing the user (`ffmpeg -ss T -i <mp4>
+   -frames:v 1 frame.png`).
 
 ## Rules
 

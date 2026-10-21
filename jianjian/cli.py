@@ -311,6 +311,26 @@ def cmd_edit(a) -> int:
         for cd in cards:
             cd["tl_start"], cd["tl_end"] = cd["tl_start"] / a.speed, cd["tl_end"] / a.speed
         log(f"cards: {len(cards)} explainer cards from {a.cards}")
+    anims = []  # (rendered clip, MediaInfo, first frame, end frame) on the final timeline
+    if a.animations:
+        from .animations import find_npx, load_animations, render_animation
+        npx = find_npx()
+        if not npx:
+            die("--animations needs Node.js 22+ (npx) for HyperFrames: brew install node")
+        try:
+            placed = load_animations(a.animations, tmap, tr["words"], a.fps, a.speed)
+        except (ValueError, FileNotFoundError) as e:
+            die(f"--animations: {e}")
+        for an in placed:
+            try:
+                mov = render_animation(an, out, work, info.width, info.height, a.fps, npx)
+            except (ValueError, RuntimeError) as e:
+                die(f"--animations: {e}")
+            anims.append((mov, probe(mov), an["f0"], an["f1"]))
+        log(f"animations: {len(anims)} from {a.animations}: " + ", ".join(
+            f"{fmt_dur(f0 / a.fps)}-{fmt_dur(f1 / a.fps)}" for _m, _i, f0, f1 in anims))
+        report["animations"] = [{"file": m, "start": round(f0 / a.fps, 3), "end": round(f1 / a.fps, 3)}
+                                for m, _i, f0, f1 in anims]
     write_ass(ass_path, tl_cues, info.width, info.height, a.font or _default_font(), order=order, cards=cards)
     report["subtitles"] = {"lines": len(tl_cues), "zh": sum(1 for c in tl_cues if c.zh),
                            "en": sum(1 for c in tl_cues if c.en)}
@@ -332,8 +352,10 @@ def cmd_edit(a) -> int:
         staging = os.path.join(out, "jianying_draft")
         rec_media, rec_root = _map_path(src, a.path_map), _map_path(root or staging, a.path_map)
         staged = jd.build_draft(staging, name, info, rec_media, keeps, tl_cues, a.fps,
-                                final_root=rec_root, tracks=order, cards=cards, speed=a.speed)
-        chk = check_draft(staged, keeps, a.fps, rec_media, local_media=src, speed=a.speed)
+                                final_root=rec_root, tracks=order, cards=cards, speed=a.speed,
+                                animations=[(_map_path(m, a.path_map), i, f0, f1) for m, i, f0, f1 in anims])
+        chk = check_draft(staged, keeps, a.fps, rec_media, local_media=src, speed=a.speed,
+                          animations=[_map_path(m, a.path_map) for m, *_ in anims])
         report["draft"] = {"name": name, "staged": staged, "check": chk}
         log(f"draft check: {'OK' if chk['ok'] else 'PROBLEMS: ' + '; '.join(chk['problems'])}")
         if root and chk["ok"] and not a.no_install:
@@ -357,7 +379,8 @@ def cmd_edit(a) -> int:
                 log("NOTE: this ffmpeg has no libass; adding subtitles as selectable tracks instead of burning in")
                 srts = [(os.path.join(out, f"{stem}.{t}.srt"), t) for t in order]
             r = render(src, mp4, keeps, info, caps, fps=a.fps, ass_path=ass_path if want_burn else None,
-                       srt_tracks=srts, encoder=a.encoder, speed=a.speed)
+                       srt_tracks=srts, encoder=a.encoder, speed=a.speed,
+                       animations=[(m, f0 / a.fps) for m, _i, f0, _f1 in anims])
             probes = [c.tl_start for c in tl_cues][:: max(1, len(tl_cues) // 8)][:8]
             vr = check_render(mp4, audio, keeps, a.fps, probes, speed=a.speed, ffmpeg=ff)
             r["check"] = vr
@@ -405,6 +428,8 @@ def _write_report_md(path: str, r: dict) -> None:
     if fz and fz.get("content_suggested"):
         lines.append(f"- Content cuts: {fz['content_suggested']} suggested, {fz['content_cut']} approved "
                      f"(see fillers_review.md)")
+    for m in r.get("animations", []):
+        lines.append(f"- Animation {fmt_dur(m['start'])}-{fmt_dur(m['end'])}: `{os.path.basename(m['file'])}`")
     for m in r.get("broll", []):
         lines.append(f"- B-roll insert point at {fmt_dur(m['edit_time'])} in the edit: \"{m['text']}\"")
     t = r.get("translation")
@@ -493,6 +518,8 @@ def main(argv=None) -> int:
     s.add_argument("--cues", help="use an edited cues.json instead of rebuilding from the transcript")
     s.add_argument("--retranslate", action="store_true")
     s.add_argument("--cards", help="explainer cards JSON: [{at, duration, title, text}] (source seconds)")
+    s.add_argument("--animations", help="explainer animations JSON: [{html, from, to, beats}] (source seconds); "
+                                        "each html is a HyperFrames composition, see skill/SKILL.md")
     s.add_argument("--max-chars", type=float, default=20.0, help="max Chinese characters per subtitle line")
     s.add_argument("--redo-asr", action="store_true", help="ignore cached VAD/transcript")
     j = e.add_argument_group("Jianying")

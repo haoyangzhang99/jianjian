@@ -110,6 +110,26 @@ were tried and failed.
   ("re-, re-, uh, remember") are only suggested ("the, there" can be two words).
 - **B-roll markers** flag requests to show something ("put the clip here") in `report.md`.
 
+## Explainer animations (`--animations`)
+
+- **HyperFrames draws them** (HTML + GSAP rendered frame by frame in headless Chrome; Apache-2.0,
+  so the open-source repo can depend on it; pinned to one version so a re-render looks the same).
+  Considered: Remotion (company licence needed above 3 people), anything2explainer (non-commercial
+  licence, and it builds its own TTS voiceover instead of following a recording), Manim (maths
+  diagrams, not general explainers).
+- **The agent writes the pages; jianjian owns the timing.** Times in animations.json are source
+  seconds, like cards. jianjian maps them through the cuts, cold open and `--speed` and hands them to
+  the page as `window.jianjian` (beats, words, duration) before its scripts run, so a page never
+  holds an edit-dependent time and a re-edit only re-renders it.
+- **A transparent overlay, not an insert.** The talk keeps playing; the clip (ProRes 4444 with alpha,
+  the size of the video) goes on an `animations` video track above the recording in the draft,
+  under the text tracks, and is overlaid in the MP4 before the subtitles are burned in. One
+  animation at a time: an earlier one ends where the next starts.
+- **Clips live in `<out>/animations/`** because the draft points at them, named by a hash of the page
+  as rendered (timing included) and its `assets/`: a rerun reuses an unchanged clip, and a changed
+  one gets a new file instead of replacing the clip an earlier draft uses. They are large
+  (ProRes 4444: about 140 MB per 30 s at 1080p).
+
 ## Subtitles and translation
 
 - **Cue splitting:** an English "." ends a cue (except abbreviations like "U.S."); English cues may

@@ -119,6 +119,7 @@ ideal for YouTube, auto-editor keeps 0.2 s each side, and Chinese 口播 guidanc
 | `--cues FILE` | | Use a reviewed `cues.json` (fixed text and translations) |
 | `--translations FILE` | | Import fixed or better translations (`{"id": "text"}`) |
 | `--cards FILE` | | Explainer cards: `[{"at": src_seconds, "duration": 6, "title": "", "text": ""}]` |
+| `--animations FILE` | | Explainer animations over the talk: `[{"html": "page.html", "from": src_seconds, "to": src_seconds, "beats": {"name": src_seconds}, "data": {}}]`. Each page is a [HyperFrames](https://github.com/heygen-com/hyperframes) composition (needs Node.js 22+), rendered to a transparent clip on its own track; see skill/SKILL.md §5b and the starter `skill/animations/steps.html`. |
 | `--no-draft` / `--no-render` / `--no-install` | | Skip the Jianying draft, skip the MP4, or build the draft without adding it to Jianying |
 | `--no-burn` / `--soft-subs` | | Don't burn in subtitles / also add selectable subtitle tracks |
 | `--fps 30` | 30 | Timeline frame rate; every cut is snapped to this frame grid |
@@ -193,6 +194,11 @@ conversation recorded on a video call. A full run (transcribe, translate, draft,
 - **Contextual fillers** (like / so / you know / restarts) are listed for review: 36 of 84 were cut.
   The review also kept "repeats" that were really two speakers echoing each other.
 - **Explainer cards** (`--cards`) are built but not yet tested on a real episode.
+- **Explainer animations** (`--animations`, prototype): the agent picks the moments and writes the
+  pages; jianjian times them to the words, renders them with HyperFrames and overlays them. On the
+  test recording: two 30-s animations rendered in about 12 s each, every step appeared on its word
+  after cuts and 1.05×, the MP4's sync probes stayed within 10 ms, and Jianying 11.5 shows the
+  ProRes 4444 clips as transparent on their own track.
 - **Chinese and mixed zh/en audio:** the code paths exist but are not yet tested on real audio.
 
 **Manual**
@@ -207,7 +213,8 @@ conversation recorded on a video call. A full run (transcribe, translate, draft,
 - Reading or re-editing drafts Jianying has saved (they are encrypted).
 - Automated export through Jianying on macOS.
 - Speaker labels (diarization).
-- Jianying templates, stickers or effects; the draft holds video and text tracks only.
+- Jianying templates, stickers or effects; the draft holds video and text tracks only (animations
+  are rendered video clips, not Jianying effects).
 
 ## Pitfalls
 
@@ -327,6 +334,21 @@ choice. **Add new pitfalls here as you find them.**
   failures. Build the reference audio sample-exact.
 - **Sped-up audio can't be compared by waveform** (atempo output differs between sample rates);
   compare loudness envelopes.
+
+- **HyperFrames refused a render with an empty error.** Its strict mode (used so a broken page
+  fails instead of rendering wrong) rejects a font named without `@font-face`, even a system font
+  like PingFang SC, and `--quiet` also hid that message. Declare every font
+  (`@font-face { font-family: "PingFang SC"; src: local("PingFang SC"); }`); jianjian no longer
+  passes `--quiet` and shows the lint findings.
+- **A rerun overwrote the animation clips an installed draft used.** The draft points at files in
+  the output folder, so re-rendering a changed page under the same name changed the older draft
+  too. Clips are now named by a hash of what was rendered; old ones stay until you delete them.
+- **The default animation box covered a face.** On a side-by-side video call the top-right box sat
+  on the second speaker. Look at a frame before choosing where an animation goes; the starter has
+  a `band` layout for the empty strip above a call's picture.
+- **ffmpeg's `drawbox` doesn't write alpha:** a "transparent clip with a white box" made with it
+  came out fully transparent, and a test of the overlay saw nothing. Use `geq` with an `a=`
+  expression to build test clips with an alpha channel.
 
 **Models**
 
