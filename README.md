@@ -143,6 +143,25 @@ an agent can do for you (see `skill/SKILL.md`):
    no real words were cut.
 3. Watch the result and listen to the cuts.
 
+## Clips for short-video platforms
+
+A finished episode can be cut into a series of parts or into highlights for Douyin, TikTok, Reels
+or Shorts:
+
+```bash
+jianjian clips episode.mp4 --prefix ep01_ "big-question=12:03.5-13:10" "story=4:10-4:31.5,4:41-5:20"
+```
+
+Each clip is one or more spans of the video (times in seconds or `[h:]m:ss`; several spans are
+joined, to drop a line in the middle). Every edge moves to the quietest frame within 0.25 s
+(`--snap`), clips are re-encoded so they start exactly there, each gets a 15/30-ms fade, and
+`plan.json` lists where every clip came from. `--from clips.json` reads a list instead.
+
+Choosing the moments is the editorial part: [docs/HIGHLIGHTS.md](docs/HIGHLIGHTS.md) collects what
+research, clipping tools and real podcast channels show about which moments work as short clips,
+as a five-point checklist. An agent following `skill/SKILL.md` reads the transcript, proposes
+candidates with scores and cuts the ones you approve.
+
 ## How it works
 
 ```
@@ -396,6 +415,17 @@ choice. **Add new pitfalls here as you find them.**
 - **ffmpeg's `drawbox` doesn't write alpha:** a "transparent clip with a white box" made with it
   came out fully transparent, and a test of the overlay saw nothing. Use `geq` with an `a=`
   expression to build test clips with an alpha channel.
+
+- **A clip that drops a line kept that line's subtitle.** In a video with burned-in subtitles, the
+  subtitle of the cut line was still on screen over the first frames of the next shot. When a
+  clip skips a line, start the next span after its subtitle has gone, and look at the frames
+  around the join.
+- **Speakers don't always pause between sentences.** A topic boundary can fall between two words
+  said without a gap ("…and it worked. And then…"); the quietest frame there is still 35 dB below
+  speech at best. Cut at that dip, fade, and listen to it; `jianjian clips` flags such edges.
+- **Two decodes of the same audio don't line up sample by sample.** A check correlating a clip's
+  audio with the original reported -0.4 for perfect clips because the two decodes were 3 ms
+  apart. Search for the best lag before calling audio mismatched.
 
 **Models**
 

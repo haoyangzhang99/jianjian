@@ -1,6 +1,6 @@
 ---
 name: jianjian
-description: Edit a podcast/meeting video for Jianying Pro (剪映专业版) on this Mac — remove long pauses, add synchronized Chinese+English subtitles, optional explainer cards, create an editable Jianying draft and export an MP4. Use when the user asks to edit/cut/subtitle a podcast or episode, "剪播客", "去掉停顿", "加双语字幕", or to make a Jianying project from a recording, including short videos for Douyin (抖音), Xiaohongshu (小红书) or Shorts.
+description: Edit a podcast/meeting video for Jianying Pro (剪映专业版) on this Mac — remove long pauses, add synchronized Chinese+English subtitles, optional explainer cards, create an editable Jianying draft and export an MP4. Use when the user asks to edit/cut/subtitle a podcast or episode, "剪播客", "去掉停顿", "加双语字幕", or to make a Jianying project from a recording, including short videos for Douyin (抖音), Xiaohongshu (小红书) or Shorts. Also use it to split a finished episode into parts or pick and cut highlights ("切片", "高光", "clips", "highlights") for Douyin, TikTok, Reels or Shorts.
 ---
 
 # Podcast → Jianying pipeline (jianjian)
@@ -86,6 +86,7 @@ rank on completion, engagement and share rate, and the opening decides whether p
 | name the project | `--draft-name "..."` |
 | term list for translation | `--glossary terms.txt` (lines `源词 = target`) |
 | explainer animation / 演示动画 / show a diagram while I talk | `--animations animations.json` (HyperFrames pages, source time), §5b |
+| split the finished video into parts / pick highlights / 切片 / 高光 | `JIANJIAN clips VIDEO NAME=START-END ...`, §6 |
 
 Default output folder: next to the video, `<name>_edit/`. Never pass paths you haven't checked exist.
 
@@ -186,6 +187,37 @@ the draft (move, resize or delete it there) and is overlaid in the MP4 under the
    files, so older drafts keep theirs. Delete clips no draft uses any more (about 140 MB per 30 s). Check the
    MP4 at each animation, and look at one frame before showing the user (`ffmpeg -ss T -i <mp4>
    -frames:v 1 frame.png`).
+
+## 6. Clips for short-video platforms: series parts and highlights
+
+When the episode is finished, the user may want it in pieces: **series parts** (the whole episode
+in 2–6 min parts, cut at topic changes) or **highlights** (the best 15–90 s moments). Picking is a
+judgement made from the transcript; cutting is `JIANJIAN clips`.
+
+1. **Get timed text for the exact video being cut.** If it is jianjian's own MP4, use
+   `<out>/<name>.bilingual.srt` (already on the final timeline). If the user re-exported or joined
+   parts in Jianying, check the length matches and compare the audio at a few points before reusing
+   those times; otherwise transcribe the video first. Times are seconds in that video.
+2. **Series parts:** cut where the topic changes, 2–6 min each, so each part starts with a line a
+   new viewer can follow. Name each part after its topic.
+3. **Highlights:** read `docs/HIGHLIGHTS.md` and score each candidate on its five points (hook in the
+   first sentence, one idea that stands alone, an emotional spike, the payoff inside the clip,
+   concrete and searchable). If `editing-style.local.md` describes the show's angle (for a
+   two-culture show: a concrete contrast with a verdict), rank that highest. Start on the question
+   or the line that sets the moment up, not on the answer; end on the payoff, on a full sentence.
+4. **Show the user a table** (time, length, first line, score and why) and wait for their pick.
+   Mention clips that contain film or music: they may be flagged for copyright on Douyin/TikTok.
+5. **Cut:**
+   ```bash
+   JIANJIAN clips "/path/to/final.mp4" --prefix ep01_ --out "/path/to/highlights" \
+     "big-question=12:03.5-13:10" "story=4:10-4:31.5,4:41-5:20"
+   ```
+   Each edge moves to the quietest frame within 0.25 s (`--snap`), every clip gets short fades, and
+   `plan.json` records where each clip came from. Several spans are joined, which drops a line in the
+   middle (e.g. "let's play the clip here"). In a video with burned-in subtitles, start the next
+   span after that line's subtitle has gone, or it shows over the next shot. A NOTE about an edge
+   in sound means the speakers don't pause there: listen to that cut.
+6. **Report** each file with its length and opening line. The source video is never changed.
 
 ## Rules
 

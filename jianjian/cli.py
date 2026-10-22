@@ -1,6 +1,7 @@
 """jianjian — podcast -> Jianying pipeline.
 
     jianjian edit VIDEO [options]     full job: pauses, bilingual subtitles, Jianying draft, MP4
+    jianjian clips VIDEO NAME=A-B ... cut a finished video into clips (series parts, highlights)
     jianjian doctor                   check the environment
 """
 from __future__ import annotations
@@ -531,6 +532,37 @@ def _write_report_md(path: str, r: dict) -> None:
         f.write("\n".join(lines))
 
 
+def cmd_clips(a) -> int:
+    """Cut a finished video into clips (series parts or highlights); see jianjian/clips.py."""
+    from . import clips
+    video = os.path.abspath(os.path.expanduser(a.video))
+    if not os.path.isfile(video):
+        die(f"video not found: {video}")
+    specs = []
+    try:
+        for t in a.clip:
+            specs.append(clips.parse_spec(t))
+        if a.from_file:
+            for d in read_json(a.from_file):
+                spans = d["spans"] if isinstance(d["spans"], str) else ",".join(f"{x}-{y}" for x, y in d["spans"])
+                specs.append(clips.parse_spec(f"{d['name']}={spans}"))
+    except (ValueError, KeyError, TypeError) as e:
+        die(f"clips: {e}")
+    if not specs:
+        die("give at least one clip: NAME=START-END[,START-END...] (or --from clips.json)")
+    ff = find_ffmpeg()
+    if not ff:
+        die("clips needs ffmpeg (run setup.sh)")
+    stem = os.path.splitext(os.path.basename(video))[0]
+    out = os.path.abspath(os.path.expanduser(a.out or os.path.join(os.path.dirname(video), f"{stem}_clips")))
+    try:
+        done = clips.run(video, specs, out, ff, ffmpeg_caps(ff), fps=a.fps, window=a.snap, prefix=a.prefix)
+    except (ValueError, RuntimeError) as e:
+        die(f"clips: {e}")
+    log(f"{len(done)} clips in {out} (plan.json lists where each came from)")
+    return 0 if all(d["ok"] for d in done) else 2
+
+
 def cmd_doctor(a) -> int:
     ok = True
     print(f"jianjian {__version__}  python {sys.version.split()[0]}  mac={is_mac()}")
@@ -621,6 +653,18 @@ def main(argv=None) -> int:
 
     pr = sub.add_parser("presets", help="list the pause presets")
     pr.set_defaults(func=lambda _a: print(preset_table()) or 0)
+
+    c = sub.add_parser("clips", help="cut a finished video into clips (series parts or highlights)")
+    c.add_argument("video")
+    c.add_argument("clip", nargs="*", metavar="NAME=START-END[,START-END...]",
+                   help="one clip per argument; times in seconds or [h:]m:ss; several spans are joined")
+    c.add_argument("--from", dest="from_file", help='JSON list of {"name": ..., "spans": [[start, end], ...]}')
+    c.add_argument("--out", help="output folder (default: <video folder>/<name>_clips)")
+    c.add_argument("--snap", type=float, default=0.25,
+                   help="move each edge to the quietest frame within this many seconds (0 = exact times)")
+    c.add_argument("--prefix", default="", help="file name prefix, e.g. ep01_")
+    c.add_argument("--fps", type=int, default=30)
+    c.set_defaults(func=cmd_clips)
 
     d = sub.add_parser("doctor", help="check the environment")
     d.add_argument("--drafts-root", default="")

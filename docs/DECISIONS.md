@@ -138,6 +138,19 @@ were tried and failed.
   one gets a new file instead of replacing the clip an earlier draft uses. They are large
   (ProRes 4444: about 140 MB per 30 s at 1080p).
 
+## Clips and highlights (`jianjian clips`)
+
+- **Picking is judgement, cutting is a tool.** Clipping services score moments with opaque models;
+  what they publish (hook, flow, value, trend) matches research and practitioner advice, collected
+  with a sample of real channels in [HIGHLIGHTS.md](HIGHLIGHTS.md). jianjian doesn't score
+  automatically: the agent reads the transcript, scores candidates on that checklist, and the
+  user approves before anything is cut.
+- **Re-encode, don't stream-copy.** Stream copy can only cut at keyframes (seconds apart);
+  re-encoding starts each clip on the chosen frame.
+- **Edges go to the quietest frame within 0.25 s**, measured on the video's own audio, because
+  subtitle and word times are only roughly right; a short fade covers a cut where speakers run
+  straight on. A clip may join several spans, so a line in the middle can be left out.
+
 ## Subtitles and translation
 
 - **Cue splitting:** an English "." ends a cue (except abbreviations like "U.S."); English cues may
