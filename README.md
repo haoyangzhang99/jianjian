@@ -13,8 +13,10 @@ are added, and you get both an editable Jianying draft and a finished MP4.
 - **Cold open** (optional): start a short video on a hook line from later in the recording
 - **Built for coding agents** (Claude Code, Codex): a skill maps plain-language requests to the tool
 
-No paid software, no API keys, and no media leaves the Mac. The network is used only once, to
-download open-source packages and models.
+No paid software, no API keys, and no media leaves the Mac. The network is used once, at setup, to
+download open-source packages and models. The one exception is the optional `--animations`: it
+fetches HyperFrames and a headless Chrome the first time it runs, and the starter animation page
+loads GSAP from a CDN on each render (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
 
 > jianjian is an independent project. It is not affiliated with or endorsed by ByteDance, the
 > maker of Jianying / CapCut. Jianying's draft format is undocumented; a Jianying update can break
@@ -26,6 +28,7 @@ download open-source packages and models.
 - An arm64 Python 3.10–3.13, or [`uv`](https://github.com/astral-sh/uv)
 - About 12 GB of free disk for packages and models
 - Jianying Pro for the draft (optional: the MP4 doesn't need it)
+- Node.js 22+ for explainer animations (optional: only `--animations` needs it; `brew install node`)
 
 ## Install
 

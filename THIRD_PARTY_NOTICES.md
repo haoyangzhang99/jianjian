@@ -1,7 +1,8 @@
 # Third-party notices
 
 jianjian's own code is MIT-licensed (see [LICENSE](LICENSE)). It bundles one third-party library
-and, at setup time, downloads packages and models that keep their own licenses.
+and, at setup time, downloads packages and models that keep their own licenses. The optional
+`--animations` fetches a few more tools the first time it runs (see the last table).
 
 ## Bundled in this repository
 
@@ -40,6 +41,20 @@ is GPL-licensed. If you redistribute an FFmpeg binary together with jianjian, fo
 
 Qwen2.5-3B is deliberately not used: it is released under the "qwen-research" license, not an
 open-source one. If you pass another model with `--mt-model`, check its license yourself.
+
+## Used only by `--animations` (optional, not bundled, not installed by `setup.sh`)
+
+| Component | License | How it's used |
+|---|---|---|
+| [Node.js](https://nodejs.org) 22+ | MIT | You install it (`brew install node`); jianjian runs `npx` |
+| [HyperFrames](https://github.com/heygen-com/hyperframes) by HeyGen, pinned to 0.8.183 | Apache-2.0 | Fetched from npm by `npx` on first use; renders each animation page to a transparent clip |
+| Headless Chrome ([Chromium](https://www.chromium.org/Home/)) | BSD-3-Clause and others | Downloaded by HyperFrames on its first render (about 200 MB, into `~/.cache/hyperframes`) |
+| [GSAP](https://gsap.com) 3.14.2 | GSAP's [Standard "no charge" license](https://gsap.com/standard-license) | Loaded from the jsDelivr CDN by the starter page `skill/animations/steps.html` when it renders |
+
+GSAP is free to use, including commercially, but its license is not an open-source one. It is
+not bundled, nothing in the default pipeline uses it, and you can write animation pages without
+it (HyperFrames' rules are in `npx hyperframes docs`). Check the license before shipping a page
+that uses it.
 
 ## Trademarks
 
