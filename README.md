@@ -1,14 +1,15 @@
 # jianjian 剪剪
 
-**Turn a podcast or video-call recording into an edited Jianying Pro (剪映专业版) project, locally
-and for free.** Long pauses and filler words are trimmed, synchronized Chinese + English subtitles
-are added, and you get both an editable Jianying draft and a finished MP4.
+**Turn a podcast or video-call recording into an edited project for
+[Kdenlive](https://kdenlive.org) (open source) or Jianying Pro (剪映专业版), locally and for free.**
+Long pauses and filler words are trimmed, synchronized Chinese + English subtitles are added, and
+you get both an editable project and a finished MP4.
 
 - **Pause trimming** with presets for Shorts, YouTube, conversations, podcasts and interviews
 - **Filler-word removal** (optional): uh / um and stutters automatically; "like / you know" after review
 - **Bilingual subtitles**, transcribed and translated on your Mac (Whisper + Qwen2.5 via MLX)
-- **A new, editable Jianying draft** that references your original file, plus an **MP4** with
-  burned-in subtitles, rendered by FFmpeg
+- **A new, editable Kdenlive project** (the default) or **Jianying draft** that references your
+  original file, plus an **MP4** with burned-in subtitles, rendered by FFmpeg
 - **Optional speed-up** (e.g. 1.05×) with the voice pitch kept
 - **Cold open** (optional): start a short video on a hook line from later in the recording
 - **Built for coding agents** (Claude Code, Codex): a skill maps plain-language requests to the tool
@@ -19,15 +20,19 @@ fetches HyperFrames and a headless Chrome the first time it runs, and the starte
 loads GSAP from a CDN on each render (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)).
 
 > jianjian is an independent project. It is not affiliated with or endorsed by ByteDance, the
-> maker of Jianying / CapCut. Jianying's draft format is undocumented; a Jianying update can break
-> draft generation. Tested with Jianying Pro 11.5 on macOS.
+> maker of Jianying / CapCut, or with KDE. Jianying's draft format is undocumented; a Jianying
+> update can break draft generation. Tested with Jianying Pro 11.5 and Kdenlive 25.12.2 on macOS.
 
 ## Requirements
 
 - An Apple Silicon Mac (MLX translation needs it)
 - An arm64 Python 3.10–3.13, or [`uv`](https://github.com/astral-sh/uv)
 - About 12 GB of free disk for packages and models
-- Jianying Pro for the draft (optional: the MP4 doesn't need it)
+- An editor for the project (optional: the MP4 doesn't need one):
+  - [Kdenlive](https://kdenlive.org), free and open source, the default. On macOS 27, use
+    [Kdenlive 25.12.2](https://download.kde.org/Attic/kdenlive/25.12/macOS/): 26.04 and later crash
+    at startup there (see Pitfalls). Elsewhere `brew install --cask kdenlive` is fine.
+  - Jianying Pro, used instead when Kdenlive isn't installed, or with `--editor jianying`
 - Node.js 22+ for explainer animations (optional: only `--animations` needs it; `brew install node`)
 
 ## Install
@@ -51,8 +56,9 @@ Setup:
   of those already exist, so coding agents can use it from plain language.
 
 No macOS permissions are needed. jianjian reads and writes files only: your video folder, a new
-`<name>_edit/` output folder, and Jianying's drafts folder
-(`~/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/`), where it only ever adds new drafts.
+`<name>_edit/` output folder (where the Kdenlive project goes), and, for a Jianying draft,
+Jianying's drafts folder (`~/Movies/JianyingPro/User Data/Projects/com.lveditor.draft/`). It never
+overwrites a project or draft; it only adds new ones.
 
 ## Quick start
 
@@ -65,7 +71,7 @@ jianjian doctor                                    # check the environment
 
 Or ask your coding agent in plain language:
 
-> Edit ~/Videos/episode.mp4 for Jianying: trim the pauses, cut filler words, add Chinese and English
+> Edit ~/Videos/episode.mp4: trim the pauses, cut filler words, add Chinese and English
 > subtitles, and export it.
 
 The agent asks which pause preset to use before it starts (see `skill/SKILL.md`). For Douyin,
@@ -83,7 +89,13 @@ Output goes to `<video folder>/<name>_edit/`:
 | `cues.json` | Every subtitle line with its translation; edit it and rerun with `--cues` |
 | `fillers.json`, `fillers_review.md` | Filler-word candidates and decisions (with `--cut-fillers`) |
 | `cuts.json` | The exact keep ranges and removed pauses / fillers |
-| `jianying_draft/` | A copy of the generated draft; the live one is inside Jianying |
+| `<project>.kdenlive`, `<project>.kdenlive.ass` | The Kdenlive project and its subtitle track (keep them together) |
+| `jianying_draft/` | With `--editor jianying`: a copy of the generated draft; the live one is inside Jianying |
+
+Open the `.kdenlive` file in Kdenlive (File → Open). The timeline has the sound of each kept range
+on A1 and its picture on V1 (grouped, so they move together), explainer animations on V2, and the
+subtitles (with cards on a second layer) on Kdenlive's subtitle track. Export from Kdenlive with
+Render, or use jianjian's MP4.
 
 In Jianying, the draft appears under 首页 → 本地草稿. If Jianying was already open, go back to the
 home page, or restart Jianying if it still doesn't show.
@@ -124,7 +136,9 @@ ideal for YouTube, auto-editor keeps 0.2 s each side, and Chinese 口播 guidanc
 | `--translations FILE` | | Import fixed or better translations (`{"id": "text"}`) |
 | `--cards FILE` | | Explainer cards: `[{"at": src_seconds, "duration": 6, "title": "", "text": ""}]` |
 | `--animations FILE` | | Explainer animations over the talk: `[{"html": "page.html", "from": src_seconds, "to": src_seconds, "beats": {"name": src_seconds}, "data": {}}]`. Each page is a [HyperFrames](https://github.com/heygen-com/hyperframes) composition (needs Node.js 22+), rendered to a transparent clip on its own track; see skill/SKILL.md §5b and the starter `skill/animations/steps.html`. |
-| `--no-draft` / `--no-render` / `--no-install` | | Skip the Jianying draft, skip the MP4, or build the draft without adding it to Jianying |
+| `--editor auto\|kdenlive\|jianying` | auto | The editor project: `auto` writes a Kdenlive project, or a Jianying draft when only Jianying is installed |
+| `--draft-name NAME` | `<name>_auto_<date>` | Name of the Kdenlive project / Jianying draft |
+| `--no-draft` / `--no-render` / `--no-install` | | Skip the editor project, skip the MP4, or build the Jianying draft without adding it to Jianying |
 | `--no-burn` / `--soft-subs` | | Don't burn in subtitles / also add selectable subtitle tracks |
 | `--fps 30` | 30 | Timeline frame rate; every cut is snapped to this frame grid |
 
@@ -169,14 +183,14 @@ video ─► 16 kHz audio ─► Silero VAD ─┐
                     └─► faster-whisper (word timestamps) ─┤ (+ verbatim pass for filler words)
                                                           ├─► keep ranges, snapped to 1/fps
                                                           │      │
-             subtitle cues ◄─ word grouping ◄─────────────┘      ├─► Jianying draft (pyJianYingDraft)
-                │                                                │      main track = keep ranges of the ORIGINAL file
-          MLX translation (Qwen2.5)                              │      text track = bilingual cues on the edit
+             subtitle cues ◄─ word grouping ◄─────────────┘      ├─► Kdenlive project, or Jianying draft
+                │                                                │      clips = keep ranges of the ORIGINAL file
+          MLX translation (Qwen2.5)                              │      subtitles = bilingual cues on the edit
                 │                                                └─► FFmpeg render (same keep ranges)
                 └──────────────── remapped onto edited timeline ─────────► SRT / ASS / burned-in MP4
 ```
 
-- **Sync.** The Jianying timeline, the render and the subtitles all use the same frame-snapped keep
+- **Sync.** The Kdenlive / Jianying timeline, the render and the subtitles all use the same frame-snapped keep
   ranges, so the edit can't drift over hundreds of cuts. Each render is checked automatically by
   cross-correlating its audio with the expected audio.
 - **Fillers** come from a second, verbatim Whisper pass and are re-located on the waveform, because
@@ -184,8 +198,8 @@ video ─► 16 kHz audio ─► Silero VAD ─┐
   and get a short audio fade.
 - **Translation** works one whole sentence at a time, then splits each translation back over that
   sentence's subtitle lines at word boundaries.
-- **Drafts.** Jianying 6+ encrypts drafts it saves, so jianjian never reads or edits an existing
-  draft; it writes a new one.
+- **Projects.** jianjian never edits an existing project or draft (Jianying 6+ encrypts drafts it
+  saves, and a Kdenlive project may hold your own edits); it writes a new one.
 
 [docs/DECISIONS.md](docs/DECISIONS.md) explains each design choice and the test result behind it.
 
@@ -217,6 +231,11 @@ conversation recorded on a video call. A full run (transcribe, translate, draft,
 - **Contextual fillers** (like / so / you know / restarts) are listed for review: 36 of 84 were cut.
   The review also kept "repeats" that were really two speakers echoing each other.
 - **Explainer cards** (`--cards`) are built but not yet tested on a real episode.
+- **Kdenlive project** (the default editor project) is not yet tested on a real episode. On a
+  20-s test video with four cuts, an inserted clip, a transparent animation, bilingual subtitles and
+  a card: Kdenlive 25.12.2 opens it with every clip in place, and MLT (`melt`, Kdenlive's renderer)
+  plays it with the sound 0 ms off at every probe. With `--speed` the clips play faster without
+  keeping the pitch (Pitfalls → Kdenlive).
 - **Explainer animations** (`--animations`, prototype): the agent picks the moments and writes the
   pages; jianjian times them to the words, renders them with HyperFrames and overlays them. On the
   test recording: two 30-s animations rendered in about 12 s each, every step appeared on its word
@@ -226,7 +245,7 @@ conversation recorded on a video call. A full run (transcribe, translate, draft,
 
 **Manual**
 
-- Exporting from inside Jianying (导出); jianjian's MP4 is the automated export.
+- Exporting from inside Kdenlive (Render) or Jianying (导出); jianjian's MP4 is the automated export.
 - Edits made in Jianying after opening the draft. To change something automated, rerun jianjian;
   it creates a new draft.
 - Listening to the cuts before publishing.
@@ -264,6 +283,26 @@ choice. **Add new pitfalls here as you find them.**
   an editing choice when comparing someone's export with jianjian's output.
 - **A name clash renamed the staging draft even with `--no-install`,** so a manual copy picked up a
   stale folder. Fixed; always verify the installed draft, not just the copy step.
+
+**Kdenlive**
+
+- **Kdenlive 26.04 and later crash at startup on macOS 27** (26.04.3 and 26.08.2 tested, with or
+  without a project): Qt 6.11 crashes in its mouse-cursor code (`QGuiApplication::setOverrideCursor`
+  → `QImage::toCGImage`) while Kdenlive builds its file browser. Kdenlive 25.12.2 (Qt 6.10) works.
+  `jianjian doctor` warns about it.
+- **`kdenlive --render` crashes on any project with subtitles,** because loading a subtitle track
+  calls the main window, which `--render` mode doesn't create. Render with `melt` instead (inside
+  `Kdenlive.app/Contents/MacOS/`), which is also what the tests use.
+- **Keeping the pitch in MLT delays the sound.** A timewarp clip with `warp_pitch=1` goes through
+  Rubber Band, whose ~110 ms latency MLT reports but doesn't compensate, so a 1.05× project played
+  3 frames out of sync. jianjian writes sped-up clips without pitch keeping (voices about 0.8
+  semitone higher at 1.05×); its own MP4 keeps the pitch.
+- **A Kdenlive audio fade-in silences the clip's whole first frame:** MLT applies a volume filter
+  per frame. Fade only the end of each clip (the last frame ramps down).
+- **Kdenlive reads subtitles from `<project>.kdenlive.ass` next to the project,** not from the
+  filter's `av.filename`; keep the two files together when moving a project.
+- **Steady test noise can't check sped-up sync:** pink noise has a flat loudness envelope, so the
+  envelope comparison found nothing to align and reported a false mismatch. Use bursts.
 
 **Transcription**
 
@@ -437,6 +476,8 @@ choice. **Add new pitfalls here as you find them.**
 |---|---|
 | `jianjian is not set up yet` | `bash setup.sh` |
 | `jianjian: command not found` | Add `~/.local/bin` to your PATH, or run `bin/jianjian` from the repo |
+| Kdenlive crashes at startup | On macOS 27, install [Kdenlive 25.12.2](https://download.kde.org/Attic/kdenlive/25.12/macOS/) instead of 26.x (`jianjian doctor` warns). Kdenlive's first run also shows a Quick Setup dialog: click Start Editing. |
+| Media offline in Kdenlive | The source video was moved or renamed. Put it back, or rerun jianjian. |
 | Draft doesn't appear in Jianying | Go back to the Jianying home page or restart Jianying, then check `report.md` → "Installed at" |
 | Clips show as missing/offline in Jianying | The source video was moved or renamed. Put it back, or rerun jianjian. |
 | Model download fails or is slow | Setup is resumable, so re-run it. In mainland China, `export HF_ENDPOINT=https://hf-mirror.com` first. |

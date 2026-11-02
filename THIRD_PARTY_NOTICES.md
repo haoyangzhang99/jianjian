@@ -31,6 +31,13 @@ jianjian runs FFmpeg as a separate program and does not include it. The build th
 imageio-ffmpeg downloads is configured with `--enable-gpl` (it includes libx264), so that binary
 is GPL-licensed. If you redistribute an FFmpeg binary together with jianjian, follow its license.
 
+## Kdenlive (optional, not bundled)
+
+[Kdenlive](https://kdenlive.org) (GPL-3.0) and the [MLT](https://www.mltframework.org) framework it
+ships with (LGPL-2.1 / GPL) are separate programs you install yourself. jianjian only writes project
+files for Kdenlive and, in its tests, runs MLT's `melt` from inside Kdenlive.app; it includes no
+Kdenlive or MLT code.
+
 ## Models downloaded by `setup.sh` (not bundled)
 
 | Model | License |
@@ -59,4 +66,5 @@ that uses it.
 ## Trademarks
 
 Jianying (剪映) and CapCut are trademarks of ByteDance. jianjian is an independent project and is
-not affiliated with or endorsed by ByteDance.
+not affiliated with or endorsed by ByteDance. Kdenlive is a KDE project; jianjian is not affiliated
+with KDE.

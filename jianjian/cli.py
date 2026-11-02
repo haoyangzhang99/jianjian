@@ -1,6 +1,6 @@
-"""jianjian — podcast -> Jianying pipeline.
+"""jianjian — podcast -> Kdenlive / Jianying pipeline.
 
-    jianjian edit VIDEO [options]     full job: pauses, bilingual subtitles, Jianying draft, MP4
+    jianjian edit VIDEO [options]     full job: pauses, bilingual subtitles, Kdenlive project, MP4
     jianjian clips VIDEO NAME=A-B ... cut a finished video into clips (series parts, highlights)
     jianjian doctor                   check the environment
 """
@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import shutil
 import sys
 import time
@@ -82,6 +83,23 @@ def parse_insert(text: str):
     if not os.path.isfile(path):
         raise argparse.ArgumentTypeError(f"clip not found: {path}")
     return t, path
+
+
+def _pick_editor(choice: str, drafts_root: str = "") -> str:
+    """--editor auto: a Kdenlive project, or a Jianying draft when only Jianying is installed."""
+    if choice != "auto":
+        return choice
+    from . import draft as jd
+    from .kdenlive import find_app
+    if find_app():
+        return "kdenlive"
+    try:
+        jd.find_drafts_root(drafts_root)
+    except FileNotFoundError:
+        log("NOTE: Kdenlive isn't installed; writing a Kdenlive project anyway (brew install --cask kdenlive)")
+        return "kdenlive"
+    log("NOTE: Kdenlive isn't installed but Jianying is; making a Jianying draft (--editor kdenlive to override)")
+    return "jianying"
 
 
 def _pick_mt_model(arg: str) -> str:
@@ -405,10 +423,24 @@ def cmd_edit(a) -> int:
     report["subtitles"] = {"lines": len(tl_cues), "zh": sum(1 for c in tl_cues if c.zh),
                            "en": sum(1 for c in tl_cues if c.en)}
 
-    # 7. Jianying draft
+    # 7. editor project: Kdenlive (default), or a Jianying draft
+    editor = "" if a.no_draft else _pick_editor(a.editor, a.drafts_root)
+    if editor == "kdenlive":
+        from . import kdenlive as kd
+        from .validate import check_project
+        name = kd.free_name(out, a.draft_name or f"{stem}_auto_{time.strftime('%m%d-%H%M')}")
+        project = kd.build_project(
+            out, name, info, _map_path(src, a.path_map), keeps, a.fps, ass_path=ass_path if order or cards else "",
+            speed=a.speed, inserts=[(_map_path(p, a.path_map), m) for p, m in insert_media],
+            animations=[(_map_path(m, a.path_map), i, f0, f1) for m, i, f0, f1 in anims])
+        chk = check_project(project, keeps, a.fps, speed=a.speed,
+                            local_media=[src] + [p for p, _ in insert_media] + [m for m, *_ in anims],
+                            animations=len(anims), subtitles=bool(order or cards))
+        report["kdenlive"] = {"name": name, "file": project, "check": chk}
+        log(f"Kdenlive project check: {'OK' if chk['ok'] else 'PROBLEMS: ' + '; '.join(chk['problems'])}")
     from . import draft as jd
     from .validate import check_draft
-    if not a.no_draft:
+    if editor == "jianying":
         name = a.draft_name or f"{stem}_auto_{time.strftime('%m%d-%H%M')}"
         try:
             root = jd.find_drafts_root(a.drafts_root)
@@ -467,6 +499,7 @@ def cmd_edit(a) -> int:
     _write_report_md(os.path.join(out, "report.md"), report)
     log(f"done in {fmt_dur(report['total_seconds'])}. Report: {os.path.join(out, 'report.md')}")
     ok = report.get("draft", {}).get("check", {}).get("ok", True) and \
+        report.get("kdenlive", {}).get("check", {}).get("ok", True) and \
         report.get("render", {}).get("check", {}).get("ok", True)
     return 0 if ok else 2
 
@@ -512,6 +545,12 @@ def _write_report_md(path: str, r: dict) -> None:
     t = r.get("translation")
     if t:
         lines.append(f"- Translation: {json.dumps(t, ensure_ascii=False)}")
+    k = r.get("kdenlive")
+    if k:
+        lines += ["", "## Kdenlive project", f"- File: `{k['file']}` (open it in Kdenlive; subtitles in "
+                  f"`{os.path.basename(k['file'])}.ass`)",
+                  f"- Check: {'OK' if k['check']['ok'] else k['check']['problems']}",
+                  f"- Tracks: " + ", ".join(f"{t['type']}:{t['name']} ({t['segments']})" for t in k["check"]["tracks"])]
     d = r.get("draft")
     if d:
         lines += ["", "## Jianying draft", f"- Name: **{d['name']}**",
@@ -582,6 +621,16 @@ def cmd_doctor(a) -> int:
               f"libx264={c['libx264']}")
     else:
         print("ffmpeg: NOT FOUND (MP4 export disabled)")
+    from . import kdenlive as kd
+    app = kd.find_app()
+    if app:
+        ver = kd.app_version(app)
+        print(f"Kdenlive: {app} {ver}".rstrip())
+        warn = kd.crash_warning(ver, platform.mac_ver()[0]) if is_mac() else ""
+        if warn:
+            print(f"  WARNING: {warn}")
+    else:
+        print("Kdenlive: not installed (brew install --cask kdenlive); --editor auto falls back to Jianying")
     from .draft import find_drafts_root
     try:
         print(f"Jianying drafts folder: {find_drafts_root(a.drafts_root)}")
@@ -634,10 +683,12 @@ def main(argv=None) -> int:
                                         "each html is a HyperFrames composition, see skill/SKILL.md")
     s.add_argument("--max-chars", type=float, default=20.0, help="max Chinese characters per subtitle line")
     s.add_argument("--redo-asr", action="store_true", help="ignore cached VAD/transcript")
-    j = e.add_argument_group("Jianying")
-    j.add_argument("--draft-name")
-    j.add_argument("--drafts-root", default="")
-    j.add_argument("--no-draft", action="store_true")
+    j = e.add_argument_group("editor project (Kdenlive or Jianying)")
+    j.add_argument("--editor", choices=["auto", "kdenlive", "jianying"], default="auto",
+                   help="auto (default): a Kdenlive project, or a Jianying draft if only Jianying is installed")
+    j.add_argument("--draft-name", help="name of the Kdenlive project / Jianying draft")
+    j.add_argument("--drafts-root", default="", help="Jianying drafts folder")
+    j.add_argument("--no-draft", action="store_true", help="no editor project, only the MP4")
     j.add_argument("--no-install", action="store_true", help="build the draft but don't copy it into Jianying")
     j.add_argument("--path-map", action="append", default=[], help=argparse.SUPPRESS)
     r = e.add_argument_group("export")

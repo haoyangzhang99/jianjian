@@ -1,9 +1,9 @@
 ---
 name: jianjian
-description: Edit a podcast/meeting video for Jianying Pro (剪映专业版) on this Mac — remove long pauses, add synchronized Chinese+English subtitles, optional explainer cards, create an editable Jianying draft and export an MP4. Use when the user asks to edit/cut/subtitle a podcast or episode, "剪播客", "去掉停顿", "加双语字幕", or to make a Jianying project from a recording, including short videos for Douyin (抖音), Xiaohongshu (小红书) or Shorts. Also use it to split a finished episode into parts or pick and cut highlights ("切片", "高光", "clips", "highlights") for Douyin, TikTok, Reels or Shorts.
+description: Edit a podcast/meeting video on this Mac — remove long pauses, add synchronized Chinese+English subtitles, optional explainer cards, create an editable Kdenlive project (or a Jianying Pro 剪映专业版 draft) and export an MP4. Use when the user asks to edit/cut/subtitle a podcast or episode, "剪播客", "去掉停顿", "加双语字幕", or to make a Kdenlive or Jianying project from a recording, including short videos for Douyin (抖音), Xiaohongshu (小红书) or Shorts. Also use it to split a finished episode into parts or pick and cut highlights ("切片", "高光", "clips", "highlights") for Douyin, TikTok, Reels or Shorts.
 ---
 
-# Podcast → Jianying pipeline (jianjian)
+# Podcast → Kdenlive / Jianying pipeline (jianjian)
 
 Everything runs locally. Tool: the `jianjian` command (`setup.sh` links it into `~/.local/bin`); call it
 `JIANJIAN` below. If it isn't on the PATH, it is `bin/jianjian` in the jianjian repo — this skill folder is a
@@ -61,7 +61,7 @@ rank on completion, engagement and share rate, and the opening decides whether p
    精彩预告); `--hook-mode move` plays it only at the start. Ask which the user wants: a teaser
    repeats the line, a move takes it out of its context. Pauses and fillers inside the hook stay
    cut, its subtitles appear at 0 s, and the draft, MP4 and checks all follow the new order. If the
-   recording has no usable hook, offer to record a 3-second hook line to add in Jianying, or
+   recording has no usable hook, offer to record a 3-second hook line to add in the editor, or
    (weaker) a card at 0 s with the hook as text (`--cards`, see §5). Never claim the structure is
    met when it isn't.
 
@@ -81,9 +81,10 @@ rank on completion, engagement and share rate, and the opening decides whether p
 | Chinese only / English only / no subtitles | `--subs zh` / `--subs en` / `--subs none` |
 | the podcast is all Chinese (more accurate) | `--lang zh` (default `auto` handles mixed zh/en speakers) |
 | don't burn subtitles into the MP4 | `--no-burn` (add `--soft-subs` for selectable tracks) |
-| only the Jianying project, no export | `--no-render` |
+| only the editor project, no export | `--no-render` |
 | only the MP4 | `--no-draft` |
 | name the project | `--draft-name "..."` |
+| for Jianying / 剪映 instead of Kdenlive | `--editor jianying` (default `auto`: Kdenlive, or Jianying when only Jianying is installed) |
 | term list for translation | `--glossary terms.txt` (lines `源词 = target`) |
 | explainer animation / 演示动画 / show a diagram while I talk | `--animations animations.json` (HyperFrames pages, source time), §5b |
 | split the finished video into parts / pick highlights / 切片 / 高光 | `JIANJIAN clips VIDEO NAME=START-END ...`, §6 |
@@ -102,7 +103,8 @@ transcription. Use `--redo-asr` only if the transcript itself is bad.
 ## 3. Check and report
 
 Read `<out>/report.md`. Report to the user: edited length and how much was removed, number of
-subtitle lines, the Jianying draft name (it appears in Jianying's 本地草稿 list), the MP4 path, and
+subtitle lines, the editor project (the `.kdenlive` file to open in Kdenlive, or the Jianying draft
+name in Jianying's 本地草稿 list), the MP4 path, and
 any PROBLEMS lines. For short-video platforms, also give the hook / value / roadmap times (§0b). Exit code 2 means a validation check failed — say which, don't claim success.
 
 ## 4. Review filler words (with --cut-fillers)
@@ -147,15 +149,15 @@ titles, people, brands), a few mishearings, and about 1 in 10 lines mistranslate
 - **Explainer cards** (secondary feature): read the transcript (`<out>/<name>.original-timeline.srt`),
   pick a few terms a general audience wouldn't know, and write `cards.json`:
   `[{"at": <source seconds>, "duration": 6, "title": "术语", "text": "一句话解释"}]` then rerun with
-  `--cards cards.json`. Keep it to a handful; cards appear top-right and are editable text in Jianying.
+  `--cards cards.json`. Keep it to a handful; cards appear top-right and are editable text in the editor (a second subtitle layer in Kdenlive).
 
 ## 5b. Explainer animations (`--animations`)
 
 Animations play over the talk while it continues (unlike `--insert`): a panel, a diagram or a list
 that builds up step by step on the words that introduce each step. Each one is an HTML page rendered
 by [HyperFrames](https://github.com/heygen-com/hyperframes) (Apache-2.0; needs Node.js 22+, runs
-locally via `npx`) to a transparent clip. It goes on an `animations` track above the recording in
-the draft (move, resize or delete it there) and is overlaid in the MP4 under the subtitles.
+locally via `npx`) to a transparent clip. It goes on an `animations` track (V2 in Kdenlive) above the recording in
+the project (move, resize or delete it there) and is overlaid in the MP4 under the subtitles.
 
 1. Read the transcript and pick a few moments a picture would explain (a concept, a structure, a
    list, numbers). Propose them to the user before building; keep it to a handful per episode.
@@ -221,8 +223,10 @@ judgement made from the transcript; cutting is `JIANJIAN clips`.
 
 ## Rules
 
-- Never modify or delete the source video or existing Jianying drafts. jianjian only adds a new draft
+- Before the first edit on a Mac, run `JIANJIAN doctor`: on macOS 27, Kdenlive 26.04 and later crash
+  at startup; tell the user to install Kdenlive 25.12.2 (README → Pitfalls → Kdenlive).
+- Never modify or delete the source video or existing Kdenlive projects / Jianying drafts. jianjian only adds a new one
   (it auto-renames on a name clash) and writes into the output folder.
 - Jianying 6+ encrypts drafts it saves, so a draft can't be edited by jianjian after you open/save it in
   Jianying. To change something, rerun jianjian to make a fresh draft.
-- Export from inside Jianying is manual (导出 button); jianjian's own MP4 export is the automated path.
+- Export from inside Kdenlive (Render) or Jianying (导出) is manual; jianjian's own MP4 export is the automated path.
