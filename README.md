@@ -234,8 +234,11 @@ conversation recorded on a video call. A full run (transcribe, translate, draft,
 - **Kdenlive project** (the default editor project) is not yet tested on a real episode. On a
   20-s test video with four cuts, an inserted clip, a transparent animation, bilingual subtitles and
   a card: Kdenlive 25.12.2 opens it with every clip in place, and MLT (`melt`, Kdenlive's renderer)
-  plays it with the sound 0 ms off at every probe. With `--speed` the clips play faster without
-  keeping the pitch (Pitfalls → Kdenlive).
+  plays it with the sound 0 ms off at every probe. A real 32-s interview clip, rerun from an
+  earlier Jianying job (no cuts, reviewed bilingual subtitles), opens in Kdenlive 25.12.2 with both
+  subtitle lines and their styles; its melt render shows the same picture and subtitles as
+  jianjian's MP4, with the sound 0 ms off at every probe. With `--speed` the clips play faster
+  without keeping the pitch (Pitfalls → Kdenlive).
 - **Explainer animations** (`--animations`, prototype): the agent picks the moments and writes the
   pages; jianjian times them to the words, renders them with HyperFrames and overlays them. On the
   test recording: two 30-s animations rendered in about 12 s each, every step appeared on its word
@@ -301,6 +304,10 @@ choice. **Add new pitfalls here as you find them.**
   per frame. Fade only the end of each clip (the last frame ramps down).
 - **Kdenlive reads subtitles from `<project>.kdenlive.ass` next to the project,** not from the
   filter's `av.filename`; keep the two files together when moving a project.
+- **After a force-quit, Kdenlive offers "Reset Configuration" on its next start.** Kdenlive ignores
+  a normal quit while a dialog (e.g. "save changes?") is open, so it was force-quit, and the next
+  launch said it had crashed. Choose Start Normally; resetting only throws away your settings.
+  Kdenlive also snaps subtitle times to its frame grid when it loads them (moves of up to one frame).
 - **Steady test noise can't check sped-up sync:** pink noise has a flat loudness envelope, so the
   envelope comparison found nothing to align and reported a false mismatch. Use bursts.
 
