@@ -10,7 +10,7 @@ Everything runs locally. Tool: the `jianjian` command (`setup.sh` links it into 
 symlink into that repo, so the repo is the parent of this file's real location. If `JIANJIAN doctor` says it
 isn't set up, run `bash <repo>/setup.sh` first.
 
-## 0. Before every new video: ask which pause preset
+## 0. Before every new video: ask which pause preset and what to make
 
 There is no default pace. Before you start editing a new video, show the user this table and ask
 which preset to use, even if they already said "remove pauses". The only exceptions are when they
@@ -27,6 +27,12 @@ already chosen.
 
 If unsure, suggest one: `conversation` for a two-person YouTube show, `podcast` for audio-first.
 `jianjian presets` prints the list. Exact values: `--max-pause S --keep-pause S`.
+
+In the same message, ask what they want out of it: "直接生成一个 MP4，还是在视频编辑器里打开、方便自己手动调整？"
+(an MP4 ready to post, or a Kdenlive / Jianying project to adjust by hand). Skip the question only
+when they already said, e.g. "只要 MP4", "open it in Kdenlive", "做个剪映草稿". MP4 only →
+`--no-draft`; editor → the default (the project, plus an MP4 to compare against). Reruns of the
+same video keep the answer.
 
 ## 0b. Short-video platforms: plan the first 30 seconds
 
@@ -70,6 +76,7 @@ rank on completion, engagement and share rate, and the opening decides whether p
 | User says | Flags |
 |---|---|
 | pause pace | `--preset NAME`: **always ask first**, §0 |
+| MP4 or editor project | **ask first** unless they said, §0 (MP4 only: `--no-draft`) |
 | for Douyin / 小红书 / Shorts / 短视频 | suggest `--preset shorts` and the 3/15/30 s opening plan (§0b) |
 | open on a later line / cold open / 先放高光 | `--hook START-END` (source time; `--hook-mode move` to not repeat it), §0b |
 | put this clip / scene / B-roll in / 插入片段 | `--insert AT=CLIP` (source time; plays at normal speed with its own sound), §4 |
@@ -82,7 +89,7 @@ rank on completion, engagement and share rate, and the opening decides whether p
 | the podcast is all Chinese (more accurate) | `--lang zh` (default `auto` handles mixed zh/en speakers) |
 | don't burn subtitles into the MP4 | `--no-burn` (add `--soft-subs` for selectable tracks) |
 | only the editor project, no export | `--no-render` |
-| only the MP4 | `--no-draft` |
+| only the MP4 / 只要 MP4 | `--no-draft` |
 | name the project | `--draft-name "..."` |
 | for Jianying / 剪映 instead of Kdenlive | `--editor jianying` (default `auto`: Kdenlive, or Jianying when only Jianying is installed) |
 | term list for translation | `--glossary terms.txt` (lines `源词 = target`) |

@@ -29,6 +29,10 @@ were tried and failed.
   the rounding never adds up.
 - **Only fade-outs at joins, one frame long.** MLT applies volume per frame, so a fade-in would
   silence each clip's first frame (33 ms of speech); a fade-out ramps down within the last frame.
+- **Agents ask: just an MP4, or a project to adjust in an editor?** Many people only want a file to
+  post and never open the project (a Jianying draft also lands in their draft list). The CLI default
+  stays project + MP4; the agent asks before a new video unless the user already said, and passes
+  `--no-draft` for an MP4 only.
 - **A new project per run, never an overwrite,** in the output folder (`_2`, `_3` on a name clash):
   the user may have edited the previous one.
 - **Checked by re-reading it** (`validate.check_project`: clip positions, lengths and in points
