@@ -5,7 +5,41 @@ Why jianjian works the way it does. Most entries come from testing the pipeline 
 Jianying Pro 11.5. Read this before "simplifying" something: several obvious-looking alternatives
 were tried and failed.
 
-## Jianying drafts
+## Kdenlive projects (the default editor project)
+
+- **Kdenlive is the default, Jianying the fallback.** Kdenlive is open source (GPL-3; jianjian only
+  writes a file for it, so its MIT license is unaffected) and its project format is plain MLT XML:
+  no encryption, no reverse-engineered library, and nothing that breaks when the app updates.
+  `--editor auto` makes a Kdenlive project, or a Jianying draft when Kdenlive isn't installed and
+  Jianying is. Considered: Shotcut (also MLT, weaker subtitle styling), OpenShot (slow on long
+  timelines), OpenCut (being rewritten, no project file or API yet), OpenFilm (an HTML motion-graphics
+  tool, not frame-exact for hundreds of cuts).
+- **Written as Kdenlive document version 1.1** (Kdenlive 23.04 to 26.08), modelled on Kdenlive's own
+  test projects: a bin, one sequence tractor with A1 / V1 / V2, and the project tractor. Each keep
+  range is a picture clip on V1 and a sound clip on A1 grouped as an `AVSplit`, like a clip Kdenlive
+  splits itself; frame positions use the same keep ranges as the draft and the MP4.
+- **Subtitles are the MP4's .ass file**, copied to `<project>.kdenlive.ass`, the name Kdenlive
+  reads for a project's subtitle track; an `avfilter.subtitles` filter on the sequence makes
+  Kdenlive load it and lets melt draw it. The bilingual lines keep their inline styles and the
+  cards become a second subtitle layer, all editable in Kdenlive.
+- **`--speed` uses timewarp clips without pitch keeping.** With `warp_pitch=1` MLT runs Rubber Band,
+  whose ~110 ms latency it reports but doesn't compensate: a 1.05× test project was 100–120 ms out
+  of sync, while without it every probe was within 30 ms. A 5 % pitch rise (0.8 semitone) is less
+  noticeable than lips 3 frames ahead of the voice. Positions are rounded from the running total so
+  the rounding never adds up.
+- **Only fade-outs at joins, one frame long.** MLT applies volume per frame, so a fade-in would
+  silence each clip's first frame (33 ms of speech); a fade-out ramps down within the last frame.
+- **A new project per run, never an overwrite,** in the output folder (`_2`, `_3` on a name clash):
+  the user may have edited the previous one.
+- **Checked by re-reading it** (`validate.check_project`: clip positions, lengths and in points
+  against the keep ranges, A1 under V1, animations, subtitle file, media). The tests also render a
+  project with melt and check the sound is in sync. `kdenlive --render` can't be used for this: it
+  crashes on any project with subtitles.
+- **On macOS 27 use Kdenlive 25.12.2.** 26.04.3 and 26.08.2 (Qt 6.11) crash at startup in Qt's
+  cursor code with or without a project; 25.12.2 (Qt 6.10) opens the generated projects. `doctor`
+  warns.
+
+## Jianying drafts (`--editor jianying`, or when Kdenlive isn't installed)
 
 - **Only new drafts, never edits.** Jianying 6+ encrypts `draft_info.json` /
   `draft_meta_info.json` when it saves a draft. jianjian writes a fresh plaintext draft (plus a copy

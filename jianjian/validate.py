@@ -75,6 +75,49 @@ def check_draft(draft_dir: str, keeps: Sequence[KeepRange], fps: int, media_path
     }
 
 
+def check_project(path: str, keeps: Sequence[KeepRange], fps: int, speed: float = 1.0,
+                  local_media: Sequence[str] = (), animations: int = 0, subtitles: bool = False) -> dict:
+    """Re-read a generated Kdenlive project: one picture and one sound clip per keep range, on the
+    same frames as the draft and the MP4; local_media: the files it uses, as seen from here."""
+    from .kdenlive import clip_frames, summarize_project
+    s = summarize_project(path)
+    problems: List[str] = []
+    a1, v1, v2 = s["tracks"]
+    expected, tl_f = [], 0
+    for k in keeps:
+        fa = int(round(k.src_start * fps))
+        n = int(round(k.src_end * fps)) - fa
+        if n > 0:
+            expected.append(clip_frames(tl_f, n, fa, speed))
+            tl_f += n
+    total = int(round(tl_f / speed))
+    if s["duration_frames"] != total:
+        problems.append(f"project length {s['duration_frames']} frames != expected {total}")
+    for tr in (v1, a1):
+        got = [sp[:3] for sp in tr["spans"]]
+        if len(got) != len(expected):
+            problems.append(f"{tr['name']}: {len(got)} clips != {len(expected)} keep ranges")
+        elif got != expected:
+            i = next(i for i, (g, e) in enumerate(zip(got, expected)) if g != e)
+            problems.append(f"{tr['name']} clip {i}: (position, length, in) {got[i]} != {expected[i]}")
+    if v2["segments"] != animations:
+        problems.append(f"expected {animations} animations on V2, found {v2['segments']}")
+    if v2["end"] > total:
+        problems.append("an animation runs past the end of the timeline")
+    if subtitles and not (s["subtitles"] and os.path.exists(s["subtitles"][0])):
+        problems.append("subtitle file missing")
+    for p in local_media:
+        if not os.path.exists(p):
+            problems.append(f"media file missing: {p}")
+    return {
+        "ok": not problems,
+        "problems": problems,
+        "tracks": [{"type": "audio" if t is a1 else "video", "name": t["name"], "segments": t["segments"]}
+                   for t in (a1, v1, v2)],
+        "duration_s": round(s["duration_frames"] / fps, 3),
+    }
+
+
 def _expected_audio(src_audio: np.ndarray, keeps: Sequence[KeepRange],
                     insert_audio: Sequence[np.ndarray] = ()) -> np.ndarray:
     # One frame is 16000/fps samples (533.33 at 30 fps), so each part's length comes from the
