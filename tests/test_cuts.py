@@ -1,7 +1,7 @@
 import pytest
 
 from jianjian.cuts import (PRESET_ALIASES, PRESETS, CutSettings, TimeMap, compute_cuts, keep_ranges_from_cuts,
-                           merge_intervals, plan, stats)
+                           merge_intervals, plan, speech_intervals, stats)
 
 
 def test_merge_intervals_joins_overlaps_and_small_gaps():
@@ -72,3 +72,22 @@ def test_no_cut_keeps_everything_and_reports_zero_cuts():
 
 def test_whole_frame_duration_keeps_its_last_frame():
     assert keep_ranges_from_cuts([], 4.0, 30)[0].src_end == pytest.approx(4.0)
+
+
+def test_long_word_span_does_not_protect_the_pause_after_it():
+    s = CutSettings(max_pause=0.6, keep_pause=0.35)
+    words = [{"s": 1.0, "e": 2.3, "w": "stretched"}]  # the voice stops at 1.4
+    speech = speech_intervals([(1.0, 1.4), (2.3, 3.0)], words, s)
+    assert speech == [(1.0, pytest.approx(1.48)), (pytest.approx(2.3), 3.0)]
+
+
+def test_long_word_span_without_vad_speech_stays_whole():
+    s = CutSettings()
+    words = [{"s": 5.0, "e": 5.9, "w": "quiet"}]
+    assert speech_intervals([(1.0, 2.0)], words, s) == [(1.0, 2.0), (5.0, 5.9)]
+
+
+def test_short_word_span_is_kept_past_vad():
+    s = CutSettings()
+    words = [{"s": 1.9, "e": 2.3, "w": "tail"}]
+    assert speech_intervals([(1.0, 2.0)], words, s) == [(1.0, 2.3)]

@@ -474,6 +474,32 @@ choice. **Add new pitfalls here as you find them.**
   audio with the original reported -0.4 for perfect clips because the two decodes were 3 ms
   apart. Search for the best lag before calling audio mismatched.
 
+- **A stretched word timestamp hides a pause.** Word spans protect words the speech detector
+  missed, but Whisper often stretches a word over the silence next to it ("a" marked 0.9 s long), so
+  that dead air counted as speech and was never shortened: 77 of 92 leftover pauses over 0.75 s in
+  a 55-minute test. A word span over `long_word` (0.6 s) now protects only the detected speech
+  inside it, plus `word_pad`; a long span with no detected speech stays whole, as it may be a quiet word.
+- **A real clause can be cut as a filler.** A filler is re-located to the voiced burst between its
+  neighbouring words. If the verbatim transcript missed a clause there ("that was a surprise
+  *because nobody saw it coming*, um"), the burst is the clause, and the cut removes real speech
+  that `verify_words.py` can't report, because it compares against the same transcript. Before the
+  final render, look for clean-transcript words that fall inside a removed span and aren't
+  in an approved cut, then set that filler to `"cut": false`.
+- **Subtitles can outlive a content cut.** A line that only touches a kept range by a few frames
+  stays in the SRT, showing words that are gone, and the clean transcript holds wording the
+  verbatim one doesn't. Compare each surviving cue against the verbatim words left in the edit,
+  and re-transcribe the audio where the two transcripts disagree.
+- **Joining recordings from different apps needs more than a concat.** Call apps mix frame
+  rates, sample rates, loudness (7 LU apart in one test) and colour range (full vs limited).
+  Unconverted, the join can be tagged with one range for all of it, and `drawbox` black shows as
+  grey 16 in a full-range frame. Convert every input to limited BT.709 before drawing, and match
+  loudness per file. Keep the audio in the same `concat`: a video-only concat drops the padding
+  where a video stream ends before its audio's segment, so the next file plays frames ahead of the
+  sound. Compare frames across each join.
+- **Keep ffmpeg filter strings out of zsh.** `$V[v0]` is an array subscript in zsh, so the variable
+  and the label vanish, and the error ("Filter not found") doesn't say why. Put the command in a
+  bash script or write `${V}"[v0]"`.
+
 **Models**
 
 - **Qwen2.5-3B is not open source** ("qwen-research" license). The low-RAM fallback is Qwen2.5-1.5B.
