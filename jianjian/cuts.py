@@ -40,6 +40,8 @@ class CutSettings:
     min_edge: float = 0.15      # never keep less than this much air next to speech
     min_cut: float = 0.25       # don't bother cutting less than this
     max_word_span: float = 1.5  # ignore suspiciously long whisper word spans
+    long_word: float = 0.6      # a word span over this may run into a pause: check it against VAD
+    word_pad: float = 0.08      # air kept around the VAD speech inside a long word span
     fps: int = 30               # frame grid for snapping
 
     def to_dict(self):
@@ -95,17 +97,21 @@ def subtract_intervals(spans: Sequence[Interval], remove: Sequence[Interval]) ->
 def speech_intervals(vad: Sequence[Interval], words: Sequence[dict], s: CutSettings,
                      fillers: Sequence[Interval] = ()) -> List[Interval]:
     """Union of VAD speech and whisper word spans (word spans protect words VAD missed).
-    Filler spans count as silence: VAD hears "uh" as speech, but it is being removed."""
+    Filler spans count as silence: VAD hears "uh" as speech, but it is being removed.
+    Whisper often stretches a word over the pause next to it, so a long span only protects the
+    VAD speech inside it; a long span with no VAD speech may be a quiet word and stays whole."""
     spans = list(vad)
     if fillers:
         spans = [(a, b) for a, b in subtract_intervals(spans, fillers) if b - a >= 0.15]
+    heard = list(spans)
     for w in words:
         a, b = float(w["s"]), float(w["e"])
         mid = (a + b) / 2
         if any(f0 <= mid <= f1 for f0, f1 in fillers):
             continue
         if 0 < b - a <= s.max_word_span:
-            spans.append((a, b))
+            inside = [(x, y) for x, y in heard if x < b and y > a] if b - a > s.long_word else []
+            spans += [(max(a, x - s.word_pad), min(b, y + s.word_pad)) for x, y in inside] or [(a, b)]
     return merge_intervals(spans, join_gap=0.05)
 
 

@@ -1,6 +1,6 @@
 ---
 name: jianjian
-description: Edit a podcast/meeting video on this Mac — remove long pauses, add synchronized Chinese+English subtitles, optional explainer cards, create an editable Kdenlive project (or a Jianying Pro 剪映专业版 draft) and export an MP4. Use when the user asks to edit/cut/subtitle a podcast or episode, "剪播客", "去掉停顿", "加双语字幕", or to make a Kdenlive or Jianying project from a recording, including short videos for Douyin (抖音), Xiaohongshu (小红书) or Shorts. Also use it to split a finished episode into parts or pick and cut highlights ("切片", "高光", "clips", "highlights") for Douyin, TikTok, Reels or Shorts.
+description: Edit a podcast/meeting video on this Mac — remove long pauses, add synchronized Chinese+English subtitles, optional explainer cards, create an editable Kdenlive project (or a Jianying Pro 剪映专业版 draft) and export an MP4. Use when the user asks to edit/cut/subtitle a podcast or episode, "剪播客", "去掉停顿", "加双语字幕", or to make a Kdenlive or Jianying project from a recording, including short videos for Douyin (抖音), Xiaohongshu (小红书) or Shorts, a scripted solo talk with retakes to remove, and explainer visuals over the talk or filling the screen with the speaker in a small window. Also use it to split a finished episode into parts or pick and cut highlights ("切片", "高光", "clips", "highlights") for Douyin, TikTok, Reels or Shorts.
 ---
 
 # Podcast → Kdenlive / Jianying pipeline (jianjian)
@@ -10,7 +10,7 @@ Everything runs locally. Tool: the `jianjian` command (`setup.sh` links it into 
 symlink into that repo, so the repo is the parent of this file's real location. If `JIANJIAN doctor` says it
 isn't set up, run `bash <repo>/setup.sh` first.
 
-## 0. Before every new video: ask which pause preset
+## 0. Before every new video: ask which pause preset and what to make
 
 There is no default pace. Before you start editing a new video, show the user this table and ask
 which preset to use, even if they already said "remove pauses". The only exceptions are when they
@@ -27,6 +27,12 @@ already chosen.
 
 If unsure, suggest one: `conversation` for a two-person YouTube show, `podcast` for audio-first.
 `jianjian presets` prints the list. Exact values: `--max-pause S --keep-pause S`.
+
+In the same message, ask what they want out of it: "直接生成一个 MP4，还是在视频编辑器里打开、方便自己手动调整？"
+(an MP4 ready to post, or a Kdenlive / Jianying project to adjust by hand). Skip the question only
+when they already said, e.g. "只要 MP4", "open it in Kdenlive", "做个剪映草稿". MP4 only →
+`--no-draft`; editor → the default (the project, plus an MP4 to compare against). Reruns of the
+same video keep the answer.
 
 ## 0b. Short-video platforms: plan the first 30 seconds
 
@@ -70,6 +76,7 @@ rank on completion, engagement and share rate, and the opening decides whether p
 | User says | Flags |
 |---|---|
 | pause pace | `--preset NAME`: **always ask first**, §0 |
+| MP4 or editor project | **ask first** unless they said, §0 (MP4 only: `--no-draft`) |
 | for Douyin / 小红书 / Shorts / 短视频 | suggest `--preset shorts` and the 3/15/30 s opening plan (§0b) |
 | open on a later line / cold open / 先放高光 | `--hook START-END` (source time; `--hook-mode move` to not repeat it), §0b |
 | put this clip / scene / B-roll in / 插入片段 | `--insert AT=CLIP` (source time; plays at normal speed with its own sound), §4 |
@@ -82,11 +89,15 @@ rank on completion, engagement and share rate, and the opening decides whether p
 | the podcast is all Chinese (more accurate) | `--lang zh` (default `auto` handles mixed zh/en speakers) |
 | don't burn subtitles into the MP4 | `--no-burn` (add `--soft-subs` for selectable tracks) |
 | only the editor project, no export | `--no-render` |
-| only the MP4 | `--no-draft` |
+| only the MP4 / 只要 MP4 | `--no-draft` |
 | name the project | `--draft-name "..."` |
 | for Jianying / 剪映 instead of Kdenlive | `--editor jianying` (default `auto`: Kdenlive, or Jianying when only Jianying is installed) |
 | term list for translation | `--glossary terms.txt` (lines `源词 = target`) |
 | explainer animation / 演示动画 / show a diagram while I talk | `--animations animations.json` (HyperFrames pages, source time), §5b |
+| solo recording with retakes / 有几句说了两三遍 / give me a transcript to mark | verbatim transcript for the user to mark, then restart cuts, §4b |
+| 60-fps recording, or "keep the source frame rate" | `--fps 60` (the default is 30 whatever the source is) |
+| visuals fill the screen, speaker in a small window / 人缩到小窗里 | one HyperFrames composition for the whole video, §5c |
+| background music / 配乐 / sound effects | §7 |
 | split the finished video into parts / pick highlights / 切片 / 高光 | `JIANJIAN clips VIDEO NAME=START-END ...`, §6 |
 
 Default output folder: next to the video, `<name>_edit/`. Never pass paths you haven't checked exist.
@@ -128,6 +139,28 @@ listed. Read `<out>/fillers_review.md` (each candidate in context), then edit `<
   request (source time), and cut the request itself ("we should show that clip") as a content cut.
 Rerun with `--fillers <out>/fillers.json` (fast: both transcripts are cached). Optionally check with
 `.venv/bin/python tools/verify_words.py <out>`: "inside a removed span" must be 0.
+
+## 4b. Retakes in a scripted solo recording
+
+A person reading their own script often says a sentence two or three times. They know which take
+they want; you don't. So:
+
+1. Run once (`--no-draft --no-burn` is enough), then turn `work/transcript_verbatim.json` into a
+   Markdown transcript, one line per sentence with its source time, and send it. The user deletes
+   or strikes the takes to drop (they may also drop a whole passage they no longer want).
+2. Diff their copy against yours and add one `{"words": [i, j], "kind": "restart", "cut": true}`
+   per deleted span (verbatim indices). Set the automatic filler candidates to `"cut": false`
+   unless they asked for filler cuts. Rerun with `--fillers`.
+3. Check every restart cut by ear or loudness: a word's end time is often too early, so a syllable
+   of the dropped take survives ("to…", a lone 例). Extend that word's `e` in both
+   `work/transcript.json` and `work/transcript_verbatim.json` (save `*.orig.json` copies first,
+   and never `--redo-asr` afterwards, or the patch is lost), then rerun.
+4. The dropped take's words can stay in the subtitles: fix those lines with `--cues` (§5).
+5. A foreign-language quote inside the talk (an English quote in a Chinese video) may be missing
+   or looped in the transcript: re-transcribe that span in its language and splice the words in
+   (README → Pitfalls).
+6. Report the final length against the script's target. If it runs over, say by how much and what
+   could still go (tighter pauses); don't cut arguments to make the target.
 
 ## 5. Review subtitles (recommended before publishing)
 
@@ -189,6 +222,47 @@ the project (move, resize or delete it there) and is overlaid in the MP4 under t
    files, so older drafts keep theirs. Delete clips no draft uses any more (about 140 MB per 30 s). Check the
    MP4 at each animation, and look at one frame before showing the user (`ffmpeg -ss T -i <mp4>
    -frames:v 1 frame.png`).
+6. **Vertical talk with a brief:** if a production brief lists the cues, follow its anchors, but
+   look at the frame first: on a 9:16 head-and-shoulders shot the only empty space is a band above
+   the head (about y 150–640). Before building many cues, ask which layout the user wants: aids in
+   that band over the full-frame speaker (this section), or visuals filling the screen with the
+   speaker in a small window (§5c), which suits knowledge videos on Douyin. If they point to a
+   reference video they can't share as a link, ask for a screen recording.
+7. **QA:** for every cue, take frames at its start, at each beat + 0.45 s, at its middle and its
+   last frame; tile them into contact sheets (`ffmpeg ... -vf tile=4x3`) and look at all of them.
+   Typical faults: a label hidden under a bubble, a highlight that arrives at the end of the cue,
+   labels overlapping while cards move. Fix, rerender, look again.
+
+## 5c. Full-screen visuals with the speaker in a small window
+
+Here the visuals are the picture: the speaker fills the frame for the hook, then shrinks into a
+small window (a circle in a corner) and the top two thirds show the cue's visuals, with a chapter
+title, a progress marker, a show title and the subtitles inside the page. `--animations` can't do
+this (it overlays clips on the full-frame recording), so build one HyperFrames composition for the
+whole video and render it directly:
+
+1. Make the clean cut first (`--no-burn`, `--no-draft`), and copy `<name>_edited.mp4` (muted
+   `<video class="clip">`) and its audio (a separate `<audio class="clip">`) into the project's
+   `assets/`.
+2. Write the page from a template with a small build script: keep `animations.json` in source
+   seconds and map every cue start, beat and chapter start onto the edit with jianjian's TimeMap
+   (`jianjian.cuts.TimeMap` over `cuts.json` keep ranges), rounded to the frame grid. Read the
+   final subtitles (`<name>.zh.srt` or your own reviewed `.srt`) into the same data.
+3. One root timeline; each cue is its own layer, built by its own function and shown only between
+   its start and end. The shrink is `transform` (scale, x, y) plus `clip-path: inset(... round
+   ...)`, about 0.7 s, starting just before the first cue after the hook. Switch the subtitles from
+   white with an outline (over video) to dark text (over the page) at the same moment.
+4. Fill every gap longer than a few seconds with a title card for that passage: in this layout an
+   empty top half looks broken, while in the overlay layout it was just the speaker. Cues that
+   meant "cut back to the speaker" become large cards instead, as the speaker is always visible.
+5. Keep templates outside the folder you render, animate with transforms only, and give each
+   subtitle line its own element (README → Pitfalls: HyperFrames).
+6. Before rendering the whole video, show the user three stills: the shrink, the most text-heavy
+   card and the densest UI. Then `npx hyperframes lint`, and render with
+   `npx hyperframes render <dir> --fps 60 --quality delivery -o <out>.mp4` (about 3 min for 3.5 min
+   of 1080×1920 at 60 fps). QA as in §5b.7, and compare the audio with `<name>_edited.mp4` at a few
+   points (cross-correlation); an AAC track can come out one frame (about 21 ms) off, which is
+   inaudible.
 
 ## 6. Clips for short-video platforms: series parts and highlights
 
@@ -220,6 +294,29 @@ judgement made from the transcript; cutting is `JIANJIAN clips`.
    span after that line's subtitle has gone, or it shows over the next shot. A NOTE about an edge
    in sound means the speakers don't pause there: listen to that cut.
 6. **Report** each file with its length and opening line. The source video is never changed.
+
+## 7. Music and sound effects
+
+jianjian adds no music. HyperFrames can mix extra `<audio class="clip">` tracks (`data-start`,
+`data-volume`); `npx hyperframes audio` measures where a sound peaks, so a click can land on a beat.
+If the user wants background music, they choose the track; you can suggest sources whose license
+allows use in videos on social platforms without credit (Pixabay Music, Mixkit) and say what to
+check: the license on the track's own page, tracks registered with Content ID (claims can be
+disputed with the download record), and length (most stock tracks are about 2 min: plan a loop at
+a phrase boundary). Ask before downloading anything. Keep music well under the voice and fade it
+with the last line. For sound effects, simple clicks and whooshes can be synthesized with ffmpeg,
+which avoids licensing.
+
+## 8. Cleaning up after the user approves
+
+When the user says the video is done and asks to tidy up, list what you'd remove and how big it
+is, ask about anything that was a deliverable (an earlier version, overlay clips), then move it to
+a dated folder in the Trash (never `rm`; emptying the Trash is the user's call). Safe to remove:
+render caches that duplicate exported files (`<out>/animations/` when no editor project uses it,
+`work/animations/`), preview and snapshot folders, single QA frames once the contact sheets exist.
+Keep the source, the edit folder's decisions (`cuts.json`, reviewed fillers and cues, patched
+transcripts), the clean cut, the project sources needed to render again, and the final export.
+Update the project's README and notes so they don't point at removed files.
 
 ## Rules
 

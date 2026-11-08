@@ -29,6 +29,10 @@ were tried and failed.
   the rounding never adds up.
 - **Only fade-outs at joins, one frame long.** MLT applies volume per frame, so a fade-in would
   silence each clip's first frame (33 ms of speech); a fade-out ramps down within the last frame.
+- **Agents ask: just an MP4, or a project to adjust in an editor?** Many people only want a file to
+  post and never open the project (a Jianying draft also lands in their draft list). The CLI default
+  stays project + MP4; the agent asks before a new video unless the user already said, and passes
+  `--no-draft` for an MP4 only.
 - **A new project per run, never an overwrite,** in the output folder (`_2`, `_3` on a name clash):
   the user may have edited the previous one.
 - **Checked by re-reading it** (`validate.check_project`: clip positions, lengths and in points
@@ -83,6 +87,11 @@ were tried and failed.
   listener more. Loudness ignores digital silence (video-call apps mute the line between words).
   Every cut gets a 15-ms fade. Tuned by listening tests on a 15-minute recording: the final
   version is 12 s longer than before and keeps the cut-off tails.
+- **Long word spans are checked against the speech detector.** Word spans are added to the speech
+  detector's output to protect quiet words it missed, but Whisper stretches some words over the
+  next pause. Spans over 0.6 s now count only where speech was detected, with 80 ms of air; one
+  with no detected speech stays whole. On a 55-minute test this removed 30 s of dead air and
+  no real words.
 - **Cuts are snapped to the frame grid** (1/fps), and the draft, the render and the subtitles all
   use the same keep ranges, so nothing drifts over hundreds of cuts.
 - **Presets come from common tools.** Mubert Cast defaults to pauses over 0.5 s shortened to 0.3 s;
