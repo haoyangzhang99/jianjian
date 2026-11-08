@@ -417,6 +417,21 @@ choice. **Add new pitfalls here as you find them.**
   check (built on the same transcript) missed it too. Never treat "not in the transcript" as "cut"
   without checking the audio, and check subtitle coverage against the audio itself (speech
   detection), not against the transcript the subtitles came from.
+- **An English passage inside a mostly Chinese talk can vanish from the transcript.** With
+  `--lang auto`, every sampled window was Chinese, so the whole file got the Chinese prompt and a
+  28-s English quote came out as nothing (one line of it survived). Look for long speech gaps in
+  `original-timeline.srt`; transcribing just that span with `language="en"` recovered it. The
+  verbatim transcript did worse on the same span: it looped one Chinese phrase ~25 times. Replace
+  the span's words in both `work/transcript*.json` before writing restart cuts against them.
+- **A restart cut can leave the last word's tail in.** Whisper ends a word 0.1–0.5 s early when a
+  pause follows, so the tail stayed between the cut and the next pause: 3 of 5 restart cuts in one
+  short video, one heard as a different word. A transcript of the edit misses tails this short.
+  Look for short keep ranges (< 0.8 s) right after a content cut in `cuts.json`, measure the
+  loudness there, and extend the word's end in `work/transcript*.json` to where the sound stops.
+- **A restart cut did not always leave the subtitles.** Where the clean and verbatim transcripts
+  word a passage differently ("可能也" vs "可能也被，呃也"), the cut text stayed in the line, and a
+  0.4-s leftover keep showed a whole cut line for a moment. Read the edited `.srt` after content
+  cuts and fix lines with `--cues`.
 - **Removing a cut word from a subtitle removed a word that is still spoken.** Subtitle text comes
   from the clean transcript, which often already leaves a restart out ("it took a, maybe a
   whole week" is written "it took maybe a whole week"); stripping the cut "a" again took the real
@@ -441,6 +456,11 @@ choice. **Add new pitfalls here as you find them.**
   (times on the sped-up timeline aren't on the frame grid). Keep subtitle lines a frame clear of
   inserted clips.
 
+- **Stream-copying a new opening onto a finished video put its audio 41 ms late.** ffmpeg's concat
+  demuxer kept each file's AAC start padding, and it also rewrote every keyframe. Join the video with
+  `-f concat -auto_convert 0 -c copy`, after checking both files have the same SPS and PPS. Decode
+  both audio tracks, join them and encode once, then measure the offset against the original.
+
 - **Homebrew's ffmpeg 8+ has no libass,** so subtitles couldn't be burned in. Prefer an ffmpeg
   with libass (imageio-ffmpeg's build has it).
 - **Rounding each cut to 16 kHz on its own drifts a few samples per cut** and caused false sync
@@ -459,9 +479,37 @@ choice. **Add new pitfalls here as you find them.**
 - **The default animation box covered a face.** On a side-by-side video call the top-right box sat
   on the second speaker. Look at a frame before choosing where an animation goes; the starter has
   a `band` layout for the empty strip above a call's picture.
+- **`hyperframes snapshot` PNGs have no alpha,** so a still of a transparent overlay shows a flat
+  background instead of the speaker, and a band can't be checked against the face. For previews,
+  give the page a still of the video as its body background (preview copy only), then snapshot.
+  Also pass `--describe false`: with `GEMINI_API_KEY` set, snapshot sends frames to Gemini.
+- **A GSAP `fromTo` shows its start state from frame 0.** A click ripple built with `fromTo`
+  (opacity 0.9 → 0) sat on screen for the whole animation before its click. Add
+  `immediateRender: false` to any `fromTo` whose start state is visible.
+- **Consecutive animations that draw one scene must end and start on the same picture.** Each
+  animation is its own clip, so a full-screen UI split over several cues blinked at every join
+  when each faded in and out. Rebuild the previous cue's end state at the start of the next, and
+  fade only at the first and last cue of a run.
+- **The default subtitles are too big and too low for a vertical talking head.** 96 px at 85 px
+  from the bottom sits under the Douyin caption area; a 9:16 brief wanted 48–58 px in
+  y 1450–1630. Burn your own `.ass` (`--no-burn`, then the libass ffmpeg jianjian finds:
+  `jianjian.util.find_ffmpeg()`, as Homebrew's has neither libass nor drawtext), and place
+  Chinese line breaks by hand where a length split would break a word (真/正, 坚/持).
+- **The MP4 and the animations came out at 30 fps from a 60-fps recording.** `--fps` defaults to
+  30 whatever the source is, and the animations render at the same rate. When a brief says "keep
+  the source frame rate", pass `--fps 60` (ProRes clips double in size: ~2.4 GB for 3.5 min).
 - **ffmpeg's `drawbox` doesn't write alpha:** a "transparent clip with a white box" made with it
   came out fully transparent, and a test of the overlay saw nothing. Use `geq` with an `a=`
   expression to build test clips with an alpha channel.
+- **HyperFrames lint rejects moving a video with `left`/`top`/`width`.** Shrinking the talking head
+  into a small window that way was flagged (layout animation is slow and not frame-exact). Animate
+  `transform` (scale, x, y) and cut the window shape with `clip-path: inset(... round ...)`.
+- **A HyperFrames project may hold only one root composition.** A template HTML with its own
+  `data-composition-id`, kept next to the generated `index.html`, failed lint as a second root.
+  Keep templates outside the folder you render.
+- **Text swapped with `tl.set(el, {textContent})` doesn't survive seeking.** HyperFrames renders
+  frames in parallel workers that seek out of order, so a caption or counter changed that way
+  showed the wrong text. Give each caption line its own element and switch visibility.
 
 - **A clip that drops a line kept that line's subtitle.** In a video with burned-in subtitles, the
   subtitle of the cut line was still on screen over the first frames of the next shot. When a
