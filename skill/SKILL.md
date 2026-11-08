@@ -41,6 +41,13 @@ Reels or TikTok, suggest this opening structure along with the preset question, 
 deliverable to it. If the platform isn't clear and the video is short or vertical, ask. These feeds
 rank on completion, engagement and share rate, and the opening decides whether people stay.
 
+**Speed: a short-video solo talk (口播) always goes out at 1.2× overall, relative to the raw
+recording.** Don't ask; say so with the preset question and in the report. A plain edit or an
+overlay edit (`--animations`): add `--speed 1.2`. The small-window layout (§5c): build and render
+at 1.0, then speed up the final render (§5c step 7). Plan the length on the sped-up time: a 3:33 cut
+is 2:57 at 1.2×. Conversations and podcasts keep their own pace (≤ 1.15, §1); highlights from them
+follow their show's rule.
+
 | By | Goal | How |
 |---|---|---|
 | 0–3 s | **Hook** | One of three: a counter-intuitive claim (反常识); suspense: a striking result without the how (设置悬念); credentials + result, then empathy with the viewer's problem (身份 + 成绩) |
@@ -83,7 +90,7 @@ rank on completion, engagement and share rate, and the opening decides whether p
 | exact numbers ("cut pauses over 1.5 s down to 0.5 s") | `--max-pause 1.5 --keep-pause 0.5` |
 | don't cut anything / subtitles only | `--no-cut` |
 | remove filler words / uh, um / 去掉嗯啊、口头禅 | `--cut-fillers`, then review (§4) |
-| make it faster / speed up / 加速 | `--speed 1.05` (subtle) or `1.1` (brisk); keep it ≤ 1.15 |
+| make it faster / speed up / 加速 | `--speed 1.05` (subtle) or `1.1` (brisk); keep conversations ≤ 1.15. A short-video solo talk is always `1.2` (§0b) |
 | bilingual subtitles (default) | `--subs bi` |
 | Chinese only / English only / no subtitles | `--subs zh` / `--subs en` / `--subs none` |
 | the podcast is all Chinese (more accurate) | `--lang zh` (default `auto` handles mixed zh/en speakers) |
@@ -263,6 +270,11 @@ whole video and render it directly:
    of 1080×1920 at 60 fps). QA as in §5b.7, and compare the audio with `<name>_edited.mp4` at a few
    points (cross-correlation); an AAC track can come out one frame (about 21 ms) off, which is
    inaudible.
+7. For a short video, speed up the approved render 1.2× (§0b) as the last step, so the build
+   keeps working in edit time:
+   `ffmpeg -i <out>.mp4 -filter_complex "[0:v]setpts=PTS/1.2,fps=60[v];[0:a]atempo=1.2[a]" -map "[v]" -map "[a]" -c:v libx264 -preset slow -crf 17 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart <out>_1.2x.mp4`.
+   Check that the video and audio durations are both the original ÷ 1.2. The 1.2× file is the one
+   to post; show the user that one.
 
 ## 6. Clips for short-video platforms: series parts and highlights
 
