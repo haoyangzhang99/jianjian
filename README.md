@@ -495,6 +495,10 @@ choice. **Add new pitfalls here as you find them.**
   y 1450–1630. Burn your own `.ass` (`--no-burn`, then the libass ffmpeg jianjian finds:
   `jianjian.util.find_ffmpeg()`, as Homebrew's has neither libass nor drawtext), and place
   Chinese line breaks by hand where a length split would break a word (真/正, 坚/持).
+- **A short-video solo talk went out at 1.0×.** The `shorts` preset only trims pauses; the 1.2×
+  that short talks need was written only in one show's highlight rules, so nobody applied it and
+  the video was posted at its recorded pace. Short-video solo talks now always get 1.2× overall
+  (skill §0b): `--speed 1.2`, or speed up the final HyperFrames render with `setpts` + `atempo`.
 - **The MP4 and the animations came out at 30 fps from a 60-fps recording.** `--fps` defaults to
   30 whatever the source is, and the animations render at the same rate. When a brief says "keep
   the source frame rate", pass `--fps 60` (ProRes clips double in size: ~2.4 GB for 3.5 min).
