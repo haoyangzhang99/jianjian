@@ -7,6 +7,9 @@ This folder is a local podcast-editing pipeline for Kdenlive (default) and Jiany
   skill/SKILL.md §0). There is no default, and the tool refuses to run without one. In the same
   message ask whether they want just an MP4 (`--no-draft`) or a project to adjust in a video
   editor, unless they already said.
+- For a scripted solo talk (口播), also ask whether to go through the transcript first and
+  recommend it: the speaker marks a flagged transcript, you cut from what they kept
+  (skill/SKILL.md §4b; `tools/words_by_pause.py`, `tools/marking.py`, `tools/assemble_takes.py`).
 - For Douyin / Xiaohongshu / Shorts, suggest the 3 / 15 / 30 s opening plan (hook, value,
   structure) and build the deliverable to it (skill/SKILL.md §0b).
 - Run jobs with `bin/jianjian edit "<video>" --preset NAME [flags]`; check `<video>_edit/report.md` afterwards.

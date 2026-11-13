@@ -77,6 +77,22 @@ were tried and failed.
 - **PyAV is pinned below 17.** faster-whisper 1.2.1 passes `metadata_errors=` to `av.open`, which
   PyAV 19 removed.
 
+## Scripted solo talks (`tools/`, skill §4b)
+
+- **The speaker chooses the takes, on paper.** Which of two readings is better can't be told from
+  a transcript, and a misread word with no retake is their decision (keep, cut the sentence, or
+  record it again). So the agent's job is a complete, flagged transcript; the cut follows the
+  speaker's edit of it. It is the recommended default for a scripted talk, offered before the
+  cut, not forced.
+- **The transcript for marking is made chunk by chunk between pauses.** A whole-file pass skipped
+  retakes after long pauses; a transcript that misses a take can't be marked.
+- **Deleted takes are removed by assembling a new source, not by word indices.** Retakes hidden
+  from the whole-file transcript have no indices, re-recorded sentences have to go in at the same
+  place, and `--insert` clips are neither sped up nor subtitled. The assembled file is an ordinary
+  recording, so pause cutting, speed and checks work unchanged.
+- **Cut points come from the level envelope.** Word times near a retake were up to a second off.
+  The assembled source is then checked word by word against the text that should remain.
+
 ## Pauses and cuts
 
 - **Every cut edge is checked against the audio** (`jianjian/edges.py`), because neither the
