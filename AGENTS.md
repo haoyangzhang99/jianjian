@@ -7,6 +7,9 @@ This folder is a local podcast-editing pipeline for Kdenlive (default) and Jiany
   skill/SKILL.md §0). There is no default, and the tool refuses to run without one. In the same
   message ask whether they want just an MP4 (`--no-draft`) or a project to adjust in a video
   editor, unless they already said.
+- For a scripted solo talk (口播), also ask whether to go through the transcript first and
+  recommend it: the speaker marks a flagged transcript, you cut from what they kept
+  (skill/SKILL.md §4b; `tools/words_by_pause.py`, `tools/marking.py`, `tools/assemble_takes.py`).
 - For Douyin / Xiaohongshu / Shorts, suggest the 3 / 15 / 30 s opening plan (hook, value,
   structure) and build the deliverable to it (skill/SKILL.md §0b).
 - Run jobs with `bin/jianjian edit "<video>" --preset NAME [flags]`; check `<video>_edit/report.md` afterwards.
@@ -14,6 +17,8 @@ This folder is a local podcast-editing pipeline for Kdenlive (default) and Jiany
 - Don't touch the source video, existing Kdenlive projects or Jianying drafts; jianjian only adds new ones.
 - Read docs/DECISIONS.md before changing the pipeline; run `.venv/bin/python -m pytest` after.
 - Personal notes (episodes, names, paths) go in STATUS.md (git-ignored), never in tracked files.
+- The user's editing habits go in `editing-style.local.md` (git-ignored): read it before each job,
+  and after they accept a video offer to add what they chose this time (skill/SKILL.md §9).
 - Every mistake or pitfall you hit goes into README.md → "Pitfalls" in the same change: what went
   wrong, why, and what to do (no personal details).
 - Code: `jianjian/` (cli, asr, cuts, fillers, subs, translate, kdenlive, draft, render, validate, cards,

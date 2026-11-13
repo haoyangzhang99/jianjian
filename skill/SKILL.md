@@ -12,6 +12,10 @@ isn't set up, run `bash <repo>/setup.sh` first.
 
 ## 0. Before every new video: ask which pause preset and what to make
 
+First look for `editing-style.local.md` in the jianjian repo (the folder this skill links into).
+If it is there, read it: it holds what this user chose on earlier videos (§9). The questions below
+are still asked, with their usual choice as your suggestion ("上次你用的是 shorts 加 1.2 倍速，这次也一样吗？").
+
 There is no default pace. Before you start editing a new video, show the user this table and ask
 which preset to use, even if they already said "remove pauses". The only exceptions are when they
 named a preset or gave exact numbers for this video. Reruns of the same video keep the preset
@@ -33,6 +37,12 @@ In the same message, ask what they want out of it: "直接生成一个 MP4，还
 when they already said, e.g. "只要 MP4", "open it in Kdenlive", "做个剪映草稿". MP4 only →
 `--no-draft`; editor → the default (the project, plus an MP4 to compare against). Reruns of the
 same video keep the answer.
+
+**Scripted solo talk (口播, read from a script):** in the same message, also ask whether they want
+to go through the transcript before the cut, and recommend it: "要不要先过一遍逐字稿？我会把你实际说的
+每一句列出来，标出重读和疑似读错的地方，你删掉不要的，我再按你改过的稿子剪。推荐这样做。" If they agree,
+do §4b before any pause cutting. If they decline, cut only the retakes they point out. Skip the
+question when they already asked for the transcript, or said they don't want it.
 
 ## 0b. Short-video platforms: plan the first 30 seconds
 
@@ -101,7 +111,7 @@ follow their show's rule.
 | for Jianying / 剪映 instead of Kdenlive | `--editor jianying` (default `auto`: Kdenlive, or Jianying when only Jianying is installed) |
 | term list for translation | `--glossary terms.txt` (lines `源词 = target`) |
 | explainer animation / 演示动画 / show a diagram while I talk | `--animations animations.json` (HyperFrames pages, source time), §5b |
-| solo recording with retakes / 有几句说了两三遍 / give me a transcript to mark | verbatim transcript for the user to mark, then restart cuts, §4b |
+| scripted solo talk (口播) / retakes / 有几句说了两三遍 / give me a transcript to mark | ask whether to go through the marking transcript first and recommend it (§0); then the transcript, their edit, the assembled source, §4b |
 | 60-fps recording, or "keep the source frame rate" | `--fps 60` (the default is 30 whatever the source is) |
 | visuals fill the screen, speaker in a small window / 人缩到小窗里 | one HyperFrames composition for the whole video, §5c |
 | background music / 配乐 / sound effects | §7 |
@@ -147,27 +157,71 @@ listed. Read `<out>/fillers_review.md` (each candidate in context), then edit `<
 Rerun with `--fillers <out>/fillers.json` (fast: both transcripts are cached). Optionally check with
 `.venv/bin/python tools/verify_words.py <out>`: "inside a removed span" must be 0.
 
-## 4b. Retakes in a scripted solo recording
+## 4b. Scripted solo talk: the marking transcript (recommended default)
 
-A person reading their own script often says a sentence two or three times. They know which take
-they want; you don't. So:
+A person reading their own script says some sentences two or three times and misreads a few. They
+know which take they want; you don't. The recommended way to cut a 口播 is to let them mark a
+transcript first and cut from what they kept. Ask before starting (§0); they can decline.
 
-1. Run once (`--no-draft --no-burn` is enough), then turn `work/transcript_verbatim.json` into a
-   Markdown transcript, one line per sentence with its source time, and send it. The user deletes
-   or strikes the takes to drop (they may also drop a whole passage they no longer want).
-2. Diff their copy against yours and add one `{"words": [i, j], "kind": "restart", "cut": true}`
-   per deleted span (verbatim indices). Set the automatic filler candidates to `"cut": false`
-   unless they asked for filler cuts. Rerun with `--fillers`.
-3. Check every restart cut by ear or loudness: a word's end time is often too early, so a syllable
-   of the dropped take survives ("to…", a lone 例). Extend that word's `e` in both
-   `work/transcript.json` and `work/transcript_verbatim.json` (save `*.orig.json` copies first,
-   and never `--redo-asr` afterwards, or the patch is lost), then rerun.
-4. The dropped take's words can stay in the subtitles: fix those lines with `--cues` (§5).
-5. A foreign-language quote inside the talk (an English quote in a Chinese video) may be missing
-   or looped in the transcript: re-transcribe that span in its language and splice the words in
-   (README → Pitfalls).
-6. Report the final length against the script's target. If it runs over, say by how much and what
+1. **Read the script** (and the visual brief, if there is one) in the video's folder. If you can't
+   find one, ask.
+2. **Transcribe by pauses**, not only in one pass:
+   `.venv/bin/python tools/words_by_pause.py VIDEO -o words.json --lang en`
+   A whole-file pass can drop a retake that follows a long pause without a trace (README →
+   Pitfalls → Transcription).
+3. **Make the transcript:** `.venv/bin/python tools/marking.py make words.json -o transcript.md`
+   (`--english` for an English header). One line per sentence or false start: `L012 [0:50] text`.
+   Tidy it against the script: split lines the tool joined, put every false start on its own line,
+   correct names the recogniser got wrong. Then put a flag after each line's time, and a note on a
+   `>` line under it where the flag needs explaining:
+
+   | Flag | Use it for | Suggest |
+   |---|---|---|
+   | 🔁 | an abandoned take or false start | delete |
+   | ✅ | the complete take of a retake | keep |
+   | ❓ | two complete takes | they pick; say which you would keep and why |
+   | ⚠️ | a wrong word, number or meaning with no retake to replace it | their call; quote the script |
+   | 〰️ | a small difference from the script (a plural, a dropped "the") | keep |
+
+   No flag means the line matches the script. Say in your message that you compared transcripts and
+   did not listen, list the ⚠️ lines with their times, and ask them to listen to those. Check that
+   every sentence of the script has at least one complete take, and say so. When the flags are in,
+   copy the file over `transcript.orig.md` again (the base for the diff) and send the path.
+4. **They edit the file.** They delete the lines they don't want, delete words inside a line to
+   drop just those, and for a ⚠️ line they may record the sentence again and write the clip's path
+   under the line. Don't start cutting until they send it back.
+5. **Read their edit:** `.venv/bin/python tools/marking.py diff transcript.orig.md transcript.md`.
+   Transcribe each re-recorded clip to see which line it replaces: one clip can hold several
+   sentences.
+6. **Assemble the source:** write a plan and run
+   `.venv/bin/python tools/assemble_takes.py plan.json assembled.mov` (`--dry-run` first). A `drop`
+   for each deleted line or run of lines, `clip` + `say` where a re-recorded sentence goes in, `cut`
+   for a single word. It places the cuts on the level envelope, not on word times, and levels each
+   clip to the recording's speech.
+7. **Check word by word.** Transcribe `assembled.mov` with `words_by_pause.py` and diff it against
+   the lines they kept (difflib over normalised words). Single-word noise is expected; look at
+   every difference that sits at a cut. Typical faults: half a word of the dropped take left in,
+   the last word before a cut gone, a false start that neither transcript had shown. Fix the plan
+   and assemble again. After a single-word `cut`, transcribe just that sentence on its own. A word
+   glued to its neighbours, with no dip on either side, can't be cut cleanly: keep it and tell them.
+8. **Cut the pauses:** `JIANJIAN edit assembled.mov --preset … --no-draft --no-burn` with the
+   preset and speed agreed in §0 (`--speed 1.2` for a short-video talk). Write the subtitles from
+   the lines they kept (§5), not from the automatic cues.
+9. **Report** the final length against the script's target, anything you could not cut and why, and
+   that nobody has listened to the cuts yet: name the sentence at each replaced clip and each
+   single-word cut so they can listen to those first. If it runs over, say by how much and what
    could still go (tighter pauses); don't cut arguments to make the target.
+
+A foreign-language quote inside the talk (an English quote in a Chinese video) may be missing or
+looped in the transcript: transcribe that span in its own language (`--lang`) and use those words.
+
+Small jobs (two or three retakes, nothing re-recorded) can skip the assembly: add
+`{"words": [i, j], "kind": "restart", "cut": true}` per deleted span to `<out>/fillers.json`
+(indices into `work/transcript_verbatim.json`), set the automatic candidates to `"cut": false`
+unless they asked for filler cuts, and rerun with `--fillers`. Check each cut the same way: a word's
+end time is often too early, so a syllable of the dropped take survives. Extend that word's `e` in
+both `work/transcript.json` and `work/transcript_verbatim.json` (save `*.orig.json` copies first,
+and never `--redo-asr` afterwards, or the patch is lost), then rerun.
 
 ## 5. Review subtitles (recommended before publishing)
 
@@ -265,7 +319,10 @@ whole video and render it directly:
 5. Keep templates outside the folder you render, animate with transforms only, and give each
    subtitle line its own element (README → Pitfalls: HyperFrames).
 6. Before rendering the whole video, show the user three stills: the shrink, the most text-heavy
-   card and the densest UI. Then `npx hyperframes lint`, and render with
+   card and the densest UI. On a first build also render a 10–30 s demo and wait for their OK, and
+   when the look is still open, render the same few moments in several styles and let them pick
+   from the stills: people choose a look from pictures, not from a description.
+   Then `npx hyperframes lint`, and render with
    `npx hyperframes render <dir> --fps 60 --quality delivery -o <out>.mp4` (about 3 min for 3.5 min
    of 1080×1920 at 60 fps). QA as in §5b.7, and compare the audio with `<name>_edited.mp4` at a few
    points (cross-correlation); an AAC track can come out one frame (about 21 ms) off, which is
@@ -275,6 +332,11 @@ whole video and render it directly:
    `ffmpeg -i <out>.mp4 -filter_complex "[0:v]setpts=PTS/1.2,fps=60[v];[0:a]atempo=1.2[a]" -map "[v]" -map "[a]" -c:v libx264 -preset slow -crf 17 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart <out>_1.2x.mp4`.
    Check that the video and audio durations are both the original ÷ 1.2. The 1.2× file is the one
    to post; show the user that one.
+   The other order also works: make the clean cut with `--speed 1.2` in step 1 and build the page
+   on that timeline. The graphics are then rendered at their final timing and frame rate, and this
+   step is skipped. Write in your notes that the cut is already sped up, so nobody speeds it twice.
+8. A second-language version keeps the same timing: swap the on-screen text and the subtitles,
+   nothing else. Latin text is much wider than Chinese at the same size, so check every line again.
 
 ## 6. Clips for short-video platforms: series parts and highlights
 
@@ -329,6 +391,31 @@ render caches that duplicate exported files (`<out>/animations/` when no editor 
 Keep the source, the edit folder's decisions (`cuts.json`, reviewed fillers and cues, patched
 transcripts), the clean cut, the project sources needed to render again, and the final export.
 Update the project's README and notes so they don't point at removed files.
+
+## 9. Remember how this user edits (`editing-style.local.md`)
+
+People make the same choices video after video: the pace, what they cut, how they like subtitles,
+how they want to be asked. Keep them in `editing-style.local.md` in the jianjian repo root, so the
+next video starts from there instead of from zero. The file is git-ignored (`*.local.md`): it stays
+on this machine and is never committed.
+
+- **Read it** at the start of every job (§0), and when reviewing cuts, fillers, subtitles and
+  highlights. Follow it as a suggestion: what the user says this time wins, and the file is then
+  updated.
+- **Offer to write it** once, after the user has accepted a video: "要不要把这次的剪辑习惯记下来，下次直接用？"
+  Write only if they say yes. If the file doesn't exist yet, say where it will be and that it stays
+  local. If they say to always keep it up to date, note that at the top and stop asking.
+- **What goes in:** choices they actually made, with the date and the kind of video (conversation,
+  scripted solo talk, highlights): preset and speed, format, what they cut and what they kept, how
+  they marked a transcript, subtitle language and style, the look they picked, how they like to
+  decide (a demo first, options as stills). Quote their words where you can. Also record what they
+  reversed after seeing it; that is the most useful line next time.
+- **Keep observation and guess apart.** Write what they did, then, marked as yours, what you take
+  it to mean. One video is a tendency: say how many videos a habit rests on.
+- **What stays out:** passwords and keys, and anything about other people beyond what the edit
+  needs. None of it is ever copied into a tracked file (README, this skill, docs, tests).
+- Group it by kind of video, newest observations last, and prune lines that later choices
+  contradicted.
 
 ## Rules
 

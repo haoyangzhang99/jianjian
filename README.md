@@ -158,6 +158,11 @@ an agent can do for you (see `skill/SKILL.md`):
    no real words were cut.
 3. Watch the result and listen to the cuts.
 
+**Your editing style.** After you accept a video, the agent offers to note the choices you made
+(pace, what you cut, subtitle style, how you like to review) in `editing-style.local.md` in this
+folder, and reads it before the next video. The file is git-ignored: it stays on your machine and
+is never committed. Delete it to start over.
+
 ## Clips for short-video platforms
 
 A finished episode can be cut into a series of parts or into highlights for Douyin, TikTok, Reels
@@ -246,6 +251,11 @@ conversation recorded on a video call. A full run (transcribe, translate, draft,
   after cuts and 1.05×, the MP4's sync probes stayed within 10 ms, and Jianying 11.5 shows the
   ProRes 4444 clips as transparent on their own track.
 - **Chinese and mixed zh/en audio:** the code paths exist but are not yet tested on real audio.
+- **Scripted solo talks with retakes** (`tools/words_by_pause.py`, `tools/marking.py`,
+  `tools/assemble_takes.py`; skill §4b): the speaker marks a transcript, and the tools drop the
+  deleted takes and swap in re-recorded sentences before the pause cut. Used on one 25-minute
+  English talk (39 lines deleted, 4 sentences re-recorded, 14.5 min at 1.2×); the agent still
+  flags the lines and checks the result word by word.
 
 **Manual**
 
@@ -323,8 +333,24 @@ choice. **Add new pitfalls here as you find them.**
   pass to find fillers and locate each one on the waveform before cutting.
 - **Re-transcriptions misspell names** (e.g. a surname heard as a different word). Never match
   lines between two transcriptions by exact words; match by position and fuzzy similarity.
+- **A whole-file pass dropped retakes and whole sentences after long pauses.** On a 25-minute
+  scripted talk the transcript showed one word stretched over 5–9 s where the speaker had stopped
+  and read the sentence again (10 places), and later left out about 30 s of ordinary sentences. The
+  speaker marks the takes to delete from that transcript, so a missing take ends up in the video.
+  Transcribe each stretch of speech on its own (`tools/words_by_pause.py`) before making a
+  transcript for marking, and again to check a cut word by word. Chunked passes make more
+  single-word errors (less context), so use them for coverage, not for spelling.
 
 **Cutting**
+
+- **Cuts placed from word times around a retake left half a word in, or took a wanted word out.**
+  Near a retake Whisper's word times were up to a second off ("forget" timed a second before it
+  was said; "thousand" inside the span to delete). Place those cuts on the level envelope: the
+  silence after the last wanted word and the onset of the next (`tools/assemble_takes.py`), then
+  transcribe the result and compare it with the text that should remain.
+- **A soft "s" reads as silence.** Cutting one extra word between two "dips" also removed the word
+  before it, because the first dip was the s of "see", not a gap. After a single-word cut,
+  transcribe that sentence on its own; if a word is glued to its neighbours, leave it in.
 
 - **Cuts landed inside audible sound.** The speech detector misses soft sounds (trailing
   syllables, breaths, short interjections), and a filler cut can nick the neighbouring word, so
@@ -514,6 +540,23 @@ choice. **Add new pitfalls here as you find them.**
 - **Text swapped with `tl.set(el, {textContent})` doesn't survive seeking.** HyperFrames renders
   frames in parallel workers that seek out of order, so a caption or counter changed that way
   showed the wrong text. Give each caption line its own element and switch visibility.
+- **HyperFrames lint rejects a `<video>` inside a timed wrapper** (a parent with `data-start`): the
+  frame extractor and the visibility window disagree. Time the `<video>` itself and leave the
+  wrapper that moves or crops it untimed.
+- **A class name used twice shrank every chart to a thumbnail.** A full-page composition grows to
+  many scenes in one stylesheet; a later `<svg class="chart">` picked up an earlier
+  `.chart { width: 200px }`. Give each kind of block its own name and look at a still of every
+  scene, not just the ones you changed.
+- **A scene opened on an empty page for three seconds.** Its first element waited for a word said
+  later. Every scene needs something on screen from its first frame.
+- **Two tweens on the same property fought.** A card's entrance (opacity 0 → 0.4) was still running
+  when its highlight (→ 1) started, and the card ended dim. Finish the entrance before the next
+  change of the same property.
+- **Measuring layout when the page loads gave zeros** for scenes that hadn't started. Lay things
+  out in normal flow, and draw SVG strokes with `pathLength="1"` instead of `getTotalLength()`.
+- **A serif CJK face had no glyph for "²".** The superscript just wasn't drawn. Write `<sup>2</sup>`.
+- **`hyperframes snapshot` prints "Fonts FAILED" for fonts declared with `local()`** and still
+  draws them correctly. Check the still, not the message.
 
 - **A clip that drops a line kept that line's subtitle.** In a video with burned-in subtitles, the
   subtitle of the cut line was still on screen over the first frames of the next shot. When a
