@@ -17,6 +17,8 @@ This folder is a local podcast-editing pipeline for Kdenlive (default) and Jiany
 - Don't touch the source video, existing Kdenlive projects or Jianying drafts; jianjian only adds new ones.
 - Read docs/DECISIONS.md before changing the pipeline; run `.venv/bin/python -m pytest` after.
 - Personal notes (episodes, names, paths) go in STATUS.md (git-ignored), never in tracked files.
+- The user's editing habits go in `editing-style.local.md` (git-ignored): read it before each job,
+  and after they accept a video offer to add what they chose this time (skill/SKILL.md §9).
 - Every mistake or pitfall you hit goes into README.md → "Pitfalls" in the same change: what went
   wrong, why, and what to do (no personal details).
 - Code: `jianjian/` (cli, asr, cuts, fillers, subs, translate, kdenlive, draft, render, validate, cards,

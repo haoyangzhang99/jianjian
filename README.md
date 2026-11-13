@@ -158,6 +158,11 @@ an agent can do for you (see `skill/SKILL.md`):
    no real words were cut.
 3. Watch the result and listen to the cuts.
 
+**Your editing style.** After you accept a video, the agent offers to note the choices you made
+(pace, what you cut, subtitle style, how you like to review) in `editing-style.local.md` in this
+folder, and reads it before the next video. The file is git-ignored: it stays on your machine and
+is never committed. Delete it to start over.
+
 ## Clips for short-video platforms
 
 A finished episode can be cut into a series of parts or into highlights for Douyin, TikTok, Reels

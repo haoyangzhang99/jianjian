@@ -12,6 +12,10 @@ isn't set up, run `bash <repo>/setup.sh` first.
 
 ## 0. Before every new video: ask which pause preset and what to make
 
+First look for `editing-style.local.md` in the jianjian repo (the folder this skill links into).
+If it is there, read it: it holds what this user chose on earlier videos (§9). The questions below
+are still asked, with their usual choice as your suggestion ("上次你用的是 shorts 加 1.2 倍速，这次也一样吗？").
+
 There is no default pace. Before you start editing a new video, show the user this table and ask
 which preset to use, even if they already said "remove pauses". The only exceptions are when they
 named a preset or gave exact numbers for this video. Reruns of the same video keep the preset
@@ -387,6 +391,31 @@ render caches that duplicate exported files (`<out>/animations/` when no editor 
 Keep the source, the edit folder's decisions (`cuts.json`, reviewed fillers and cues, patched
 transcripts), the clean cut, the project sources needed to render again, and the final export.
 Update the project's README and notes so they don't point at removed files.
+
+## 9. Remember how this user edits (`editing-style.local.md`)
+
+People make the same choices video after video: the pace, what they cut, how they like subtitles,
+how they want to be asked. Keep them in `editing-style.local.md` in the jianjian repo root, so the
+next video starts from there instead of from zero. The file is git-ignored (`*.local.md`): it stays
+on this machine and is never committed.
+
+- **Read it** at the start of every job (§0), and when reviewing cuts, fillers, subtitles and
+  highlights. Follow it as a suggestion: what the user says this time wins, and the file is then
+  updated.
+- **Offer to write it** once, after the user has accepted a video: "要不要把这次的剪辑习惯记下来，下次直接用？"
+  Write only if they say yes. If the file doesn't exist yet, say where it will be and that it stays
+  local. If they say to always keep it up to date, note that at the top and stop asking.
+- **What goes in:** choices they actually made, with the date and the kind of video (conversation,
+  scripted solo talk, highlights): preset and speed, format, what they cut and what they kept, how
+  they marked a transcript, subtitle language and style, the look they picked, how they like to
+  decide (a demo first, options as stills). Quote their words where you can. Also record what they
+  reversed after seeing it; that is the most useful line next time.
+- **Keep observation and guess apart.** Write what they did, then, marked as yours, what you take
+  it to mean. One video is a tendency: say how many videos a habit rests on.
+- **What stays out:** passwords and keys, and anything about other people beyond what the edit
+  needs. None of it is ever copied into a tracked file (README, this skill, docs, tests).
+- Group it by kind of video, newest observations last, and prune lines that later choices
+  contradicted.
 
 ## Rules
 
